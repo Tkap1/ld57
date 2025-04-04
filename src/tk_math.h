@@ -14,12 +14,53 @@ struct s_v3
 	float z;
 };
 
-struct s_v4
+
+union s_v4
 {
-	float x;
-	float y;
-	float z;
-	float w;
+	struct
+	{
+		union
+		{
+			struct
+			{
+				union
+				{
+					struct
+					{
+						float x;
+						float y;
+					};
+					s_v2 xy;
+				};
+				float z;
+			};
+			s_v3 xyz;
+		};
+		float w;
+	};
+
+	struct
+	{
+		union
+		{
+			struct
+			{
+				union
+				{
+					struct
+					{
+						float r;
+						float g;
+					};
+					s_v2 rg;
+				};
+				float b;
+			};
+			s_v3 rgb;
+		};
+		float a;
+	};
+	float elements[4];
 };
 
 struct s_rect
@@ -43,6 +84,21 @@ struct s_rect
 		};
 		s_v2 size;
 	};
+};
+
+struct s_quaternion
+{
+	union
+	{
+		struct
+		{
+			float x;
+			float y;
+			float z;
+		};
+		s_v3 xyz;
+	};
+	float w;
 };
 
 
@@ -112,6 +168,16 @@ static constexpr s_v3 v3(t0 x)
 	return result;
 }
 
+template <typename t0>
+static constexpr s_v4 v4(s_v3 v, t0 w)
+{
+	s_v4 result = zero;
+	result.x = v.x;
+	result.y = v.y;
+	result.z = v.z;
+	result.w = (float)w;
+	return result;
+}
 
 func constexpr s_v2 operator+(s_v2 a, s_v2 b)
 {
@@ -204,6 +270,12 @@ func constexpr s_v3 operator-(s_v3 a, s_v3 b)
 		a.z - b.z
 	);
 }
+
+func constexpr s_quaternion make_quaternion()
+{
+	return {.x = 0, .y = 0, .z = 0, .w = 1};
+}
+
 // -------------------------------------------------------------------------------------------
 
 static s_m4 m4_scale(s_v3 v)
@@ -387,4 +459,151 @@ func float v3_length_squared(s_v3 v)
 func float v3_length(s_v3 v)
 {
 	return sqrtf(v3_length_squared(v));
+}
+
+func s_quaternion dir_to_quaternion(s_v3 dir)
+{
+	dir.y *= -1;
+	swap(&dir.x, &dir.y);
+
+	s_v3 v1 = v3(1, 0, 0);
+	s_v3 y_vec = v3(0, 1, 0);
+	float dot = v3_dot(v1, dir);
+	if(dot < -0.999999f) {
+		s_v3 temp = v3_cross(v1, dir);
+		if(v3_length(temp) < 0.000001f) {
+			temp = v3_cross(y_vec, dir);
+		}
+		temp = v3_normalized(temp);
+		return quaternion_from_axis_angle(temp, c_pi);
+	}
+	else if (dot > 0.999999f) {
+		return make_quaternion();
+	}
+	else {
+		s_quaternion result = zero;
+		result.xyz = v3_cross(v1, dir);
+		result.w = 1 + dot;
+		return result;
+	}
+}
+
+func s_v3 v3_rotate(s_v3 v, s_quaternion q)
+{
+	s_m4 m4 = quaternion_to_m4(q);
+	return v4_multiply_m4(v4(v, 0), m4).xyz;
+}
+
+func s_m4 quaternion_to_m4(s_quaternion left)
+{
+	s_m4 result;
+
+	s_quaternion NormalizedQuaternion = quaternion_normalized(left);
+
+	float XX, YY, ZZ,
+			XY, XZ, YZ,
+			WX, WY, WZ;
+
+	XX = NormalizedQuaternion.x * NormalizedQuaternion.x;
+	YY = NormalizedQuaternion.y * NormalizedQuaternion.y;
+	ZZ = NormalizedQuaternion.z * NormalizedQuaternion.z;
+	XY = NormalizedQuaternion.x * NormalizedQuaternion.y;
+	XZ = NormalizedQuaternion.x * NormalizedQuaternion.z;
+	YZ = NormalizedQuaternion.y * NormalizedQuaternion.z;
+	WX = NormalizedQuaternion.w * NormalizedQuaternion.x;
+	WY = NormalizedQuaternion.w * NormalizedQuaternion.y;
+	WZ = NormalizedQuaternion.w * NormalizedQuaternion.z;
+
+	result.all2[0][0] = 1.0f - 2.0f * (YY + ZZ);
+	result.all2[0][1] = 2.0f * (XY + WZ);
+	result.all2[0][2] = 2.0f * (XZ - WY);
+	result.all2[0][3] = 0.0f;
+
+	result.all2[1][0] = 2.0f * (XY - WZ);
+	result.all2[1][1] = 1.0f - 2.0f * (XX + ZZ);
+	result.all2[1][2] = 2.0f * (YZ + WX);
+	result.all2[1][3] = 0.0f;
+
+	result.all2[2][0] = 2.0f * (XZ + WY);
+	result.all2[2][1] = 2.0f * (YZ - WX);
+	result.all2[2][2] = 1.0f - 2.0f * (XX + YY);
+	result.all2[2][3] = 0.0f;
+
+	result.all2[3][0] = 0.0f;
+	result.all2[3][1] = 0.0f;
+	result.all2[3][2] = 0.0f;
+	result.all2[3][3] = 1.0f;
+
+	return (result);
+}
+
+func s_v4 v4_multiply_m4(s_v4 v, s_m4 m)
+{
+	s_v4 result;
+
+	result.x = m.all[0] * v.x + m.all[4] * v.y + m.all[8]  * v.z + m.all[12] * v.w;
+	result.y = m.all[1] * v.x + m.all[5] * v.y + m.all[9]  * v.z + m.all[13] * v.w;
+	result.z = m.all[2] * v.x + m.all[6] * v.y + m.all[10] * v.z + m.all[14] * v.w;
+	result.w = m.all[3] * v.x + m.all[7] * v.y + m.all[11] * v.z + m.all[15] * v.w;
+
+	return result;
+}
+
+
+func s_quaternion quaternion_from_axis_angle(s_v3 axis, float angle)
+{
+	s_quaternion result;
+
+	s_v3 axis_normalized = v3_normalized(axis);
+	float sin_rot = sinf(angle * 0.5f);
+
+	result.xyz = axis_normalized * sin_rot;
+	result.w = cosf(angle * 0.5f);
+
+	return result;
+}
+
+func s_quaternion quaternion_divide_f(s_quaternion Left, float Dividend)
+{
+	s_quaternion Result;
+
+	Result.x = Left.x / Dividend;
+	Result.y = Left.y / Dividend;
+	Result.z = Left.z / Dividend;
+	Result.w = Left.w / Dividend;
+
+	return (Result);
+}
+
+func s_quaternion quaternion_divide(s_quaternion Left, float Right)
+{
+	s_quaternion Result = quaternion_divide_f(Left, Right);
+	return (Result);
+}
+
+func float quaternion_dot(s_quaternion Left, s_quaternion Right)
+{
+	float Result;
+
+	Result = (Left.x * Right.x) + (Left.y * Right.y) + (Left.z * Right.z) + (Left.w * Right.w);
+
+	return (Result);
+}
+
+func s_quaternion quaternion_normalized(s_quaternion Left)
+{
+	s_quaternion Result;
+
+	float Length = sqrtf(quaternion_dot(Left, Left));
+	Result = quaternion_divide(Left, Length);
+
+	return (Result);
+}
+
+template <typename t>
+func void swap(t* a, t* b)
+{
+	t c = *a;
+	*a = *b;
+	*b = c;
 }

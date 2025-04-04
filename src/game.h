@@ -95,6 +95,8 @@ X(PFNGLBINDBUFFERBASEPROC, glBindBufferBase) \
 m_gl_funcs
 #undef X
 
+#define invalid_default_case default: { assert(!"Invalid default case"); }
+
 enum e_mesh
 {
 	e_mesh_quad,
@@ -115,6 +117,33 @@ enum e_texture
 	e_texture_count
 };
 
+enum e_depth_mode
+{
+	e_depth_mode_no_read_no_write,
+	e_depth_mode_read_and_write,
+	e_depth_mode_read_no_write,
+	e_depth_mode_no_read_yes_write,
+};
+
+enum e_cull_mode
+{
+	e_cull_mode_disabled,
+	e_cull_mode_back_ccw,
+	e_cull_mode_front_ccw,
+	e_cull_mode_back_cw,
+	e_cull_mode_front_cw,
+};
+
+enum e_blend_mode
+{
+	e_blend_mode_disabled,
+	e_blend_mode_additive,
+	e_blend_mode_premultiply_alpha,
+	e_blend_mode_multiply,
+	e_blend_mode_multiply_inv,
+	e_blend_mode_normal,
+	e_blend_mode_additive_no_alpha,
+};
 
 #pragma pack(push, 1)
 struct s_ply_face
@@ -155,6 +184,9 @@ struct s_render_flush_data
 {
 	s_m4 view;
 	s_m4 projection;
+	e_blend_mode blend_mode;
+	e_depth_mode depth_mode;
+	e_cull_mode cull_mode;
 };
 
 struct s_render_group
@@ -194,6 +226,8 @@ struct s_game
 	float update_time;
 	f64 accumulator;
 	f64 time_before;
+	s_v3 player_pos;
+	s_quaternion player_rot;
 
 	int render_instance_count[e_shader_count][e_texture_count][e_mesh_count];
 	int render_instance_max_elements[e_shader_count][e_texture_count][e_mesh_count];

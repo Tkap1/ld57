@@ -7,3 +7,14 @@ func float v3_dot(s_v3 a, s_v3 b);
 func s_v3 v3_normalized(s_v3 v);
 func float v3_length_squared(s_v3 v);
 func float v3_length(s_v3 v);
+func s_quaternion dir_to_quaternion(s_v3 dir);
+func s_v3 v3_rotate(s_v3 v, s_quaternion q);
+func s_m4 quaternion_to_m4(s_quaternion left);
+func s_v4 v4_multiply_m4(s_v4 v, s_m4 m);
+func s_quaternion quaternion_from_axis_angle(s_v3 axis, float angle);
+func s_quaternion quaternion_divide_f(s_quaternion Left, float Dividend);
+func s_quaternion quaternion_divide(s_quaternion Left, float Right);
+func float quaternion_dot(s_quaternion Left, s_quaternion Right);
+func s_quaternion quaternion_normalized(s_quaternion Left);
+template <typename t>
+func void swap(t* a, t* b);

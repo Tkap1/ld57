@@ -46,6 +46,10 @@ func void on_failed_assert(char* condition, char* file, int line);
 #include "shared.h"
 #include "tk_arena.h"
 #include "tk_array.h"
+
+#define m_tk_random_impl
+#include "tk_random.h"
+
 #include "tk_math.h"
 #include "config.h"
 #include "game.h"
@@ -62,6 +66,9 @@ void init(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
+
+	game->player_pos.z = 2;
+	game->player_rot = make_quaternion();
 
 	{
 		u8* memory = platform_data->memory + sizeof(s_game);
@@ -195,6 +202,27 @@ func void input()
 		SDL_GetMouseState(&x, &y);
 		g_mouse = v2(x, y);
 	}
+
+	s_v3 dir = zero;
+	u8* key_state = (u8*)SDL_GetKeyboardState(null);
+	if(key_state[SDL_SCANCODE_A]) {
+		dir.x -= 1;
+	}
+	if(key_state[SDL_SCANCODE_D]) {
+		dir.x += 1;
+	}
+	if(key_state[SDL_SCANCODE_W]) {
+		dir.y += 1;
+	}
+	if(key_state[SDL_SCANCODE_S]) {
+		dir.y -= 1;
+	}
+	dir = v3_normalized(dir);
+	game->player_pos += dir * 0.1f;
+	if(v3_length(dir) > 0) {
+		game->player_rot = dir_to_quaternion(dir);
+	}
+
 	SDL_Event event;
 	while(SDL_PollEvent(&event) != 0) {
 		switch(event.type) {
@@ -270,18 +298,38 @@ func void render(float interp_dt, float delta)
 
 	s_m4 ortho = make_orthographic(0, (float)g_platform_data->window_size.x, (float)g_platform_data->window_size.y, 0, -1, 1);
 	s_m4 perspective = make_perspective(60.0f, c_world_size.x / c_world_size.y, 0.01f, 100.0f);
-	s_m4 view = look_at(v3(0, -10, 0), zero, c_up_axis);
+
+	s_v3 cam_pos = v3(
+		game->player_pos.x,
+		game->player_pos.y - 10,
+		10.0f
+	);
+	s_m4 view = look_at(cam_pos, game->player_pos, c_up_axis);
 
 	{
-		s_m4 model = m4_translate(v3(-2, 0, 0));
-		model = m4_multiply(model, m4_rotate(g_mouse.x / g_platform_data->window_size.x * c_pi, v3(0, 0, 1)));
-		draw_mesh(e_mesh_cube, model, make_color(1));
-	}
-	{
-		s_m4 model = m4_translate(v3(2, 0, 0));
-		model = m4_multiply(model, m4_rotate(g_mouse.x / g_platform_data->window_size.x * c_pi, v3(0, 0, 1)));
+		s_m4 model = m4_translate(game->player_pos);
+		model = m4_multiply(model, quaternion_to_m4(game->player_rot));
 		draw_mesh(e_mesh_monkey, model, make_color(1));
 	}
+
+	s_rng rng = make_rng(0);
+	for(int y = 0; y < 100; y += 1) {
+		for(int x = 0; x < 100; x += 1) {
+			s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
+			model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+			draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
+		}
+	}
+	for(int y = 0; y < 100; y += 1) {
+		for(int x = 0; x < 100; x += 1) {
+			if(chance100(&rng, 10)) {
+				s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
+				model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+				draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
+			}
+		}
+	}
+
 	{
 		s_render_flush_data data = make_render_flush_data();
 		data.projection = perspective;
@@ -375,7 +423,9 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	}
 
-	glEnable(GL_DEPTH_TEST);
+	set_cull_mode(data.cull_mode);
+	set_depth_mode(data.depth_mode);
+	set_blend_mode(data.blend_mode);
 
 	{
 		gl(glBindBuffer(GL_UNIFORM_BUFFER, game->ubo));
@@ -578,6 +628,9 @@ func s_render_flush_data make_render_flush_data()
 	s_render_flush_data result = zero;
 	result.view = m4_identity();
 	result.projection = m4_identity();
+	result.cull_mode = e_cull_mode_disabled;
+	result.blend_mode = e_blend_mode_normal;
+	result.depth_mode = e_depth_mode_read_and_write;
 	return result;
 }
 
@@ -727,4 +780,99 @@ func s_mesh make_mesh_from_ply_file(char* file, s_linear_arena* arena)
 	}
 	s_mesh result = make_mesh_from_vertices(vertex_arr, vertex_count);
 	return result;
+}
+
+func void set_cull_mode(e_cull_mode mode)
+{
+	switch(mode) {
+		case e_cull_mode_disabled: {
+			glDisable(GL_CULL_FACE);
+		} break;
+
+		case e_cull_mode_back_ccw: {
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+			glFrontFace(GL_CCW);
+		} break;
+
+		case e_cull_mode_front_ccw: {
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_FRONT);
+			glFrontFace(GL_CCW);
+		} break;
+
+		case e_cull_mode_back_cw: {
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+			glFrontFace(GL_CW);
+		} break;
+
+		case e_cull_mode_front_cw: {
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_FRONT);
+			glFrontFace(GL_CW);
+		} break;
+		invalid_default_case;
+	}
+}
+
+func void set_depth_mode(e_depth_mode mode)
+{
+	switch(mode) {
+		case e_depth_mode_no_read_no_write: {
+			glDisable(GL_DEPTH_TEST);
+			glDepthMask(GL_FALSE);
+		} break;
+		case e_depth_mode_read_and_write: {
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+			glDepthMask(GL_TRUE);
+		} break;
+		case e_depth_mode_read_no_write: {
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_LESS);
+			glDepthMask(GL_FALSE);
+		} break;
+		case e_depth_mode_no_read_yes_write: {
+			glEnable(GL_DEPTH_TEST);
+			glDepthFunc(GL_ALWAYS);
+			glDepthMask(GL_TRUE);
+		} break;
+		invalid_default_case;
+	}
+}
+
+func void set_blend_mode(e_blend_mode mode)
+{
+	switch(mode) {
+		case e_blend_mode_disabled: {
+			glDisable(GL_BLEND);
+		} break;
+		case e_blend_mode_additive: {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE);
+		} break;
+		case e_blend_mode_premultiply_alpha: {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		} break;
+		case e_blend_mode_multiply: {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+		} break;
+		case e_blend_mode_multiply_inv: {
+			glEnable(GL_BLEND);
+			// glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+			glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_COLOR, GL_ZERO, GL_ONE);
+		} break;
+		case e_blend_mode_normal: {
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		} break;
+		case e_blend_mode_additive_no_alpha: {
+			glEnable(GL_BLEND);
+			glBlendFuncSeparate(GL_ONE, GL_ONE, GL_ZERO, GL_ONE);
+		} break;
+		invalid_default_case;
+	}
 }

@@ -18,3 +18,6 @@ func s_render_flush_data make_render_flush_data();
 func s_mesh make_mesh_from_vertices(s_vertex* vertex_arr, int vertex_count);
 func s_ply_mesh parse_ply_mesh(char* path, s_linear_arena* arena);
 func s_mesh make_mesh_from_ply_file(char* file, s_linear_arena* arena);
+func void set_cull_mode(e_cull_mode mode);
+func void set_depth_mode(e_depth_mode mode);
+func void set_blend_mode(e_blend_mode mode);
