@@ -15,5 +15,13 @@ global constexpr float c_game_speed_arr[] = {
 	1,
 	2, 4, 8, 16
 };
-global constexpr int c_proj_step = 9;
-global constexpr int c_proj_chance = 65;
+
+global constexpr int c_bounce_proj_z_start = 20;
+global constexpr int c_bounce_proj_z_end = 300;
+global constexpr int c_bounce_proj_z_step = 9;
+global constexpr int c_bounce_proj_chance = 65;
+
+global constexpr int c_default_proj_z_start = 200;
+global constexpr int c_default_proj_z_end = 600;
+global constexpr int c_default_proj_z_step = 9;
+global constexpr int c_default_proj_chance = 65;

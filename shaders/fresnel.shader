@@ -49,7 +49,9 @@ void main()
 	else {
 		n2 = smoothstep(-step, 0.0, n);
 	}
-	color.r += n2;
+	// color.r += n2;
+	vec3 fresnel_color = v_color.rgb * 2;
+	color = mix(v_color.rgb * 0.5, fresnel_color, n2);
 
 	out_color = vec4(color, 1.0);
 }

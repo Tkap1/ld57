@@ -367,20 +367,40 @@ func void update()
 
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		{
-			int z = 10;
-			while(z < 1000) {
-				if(chance100(&rng, c_proj_chance)) {
+			int z = c_default_proj_z_start;
+			while(z < c_default_proj_z_end) {
+				if(chance100(&rng, c_default_proj_chance)) {
 					s_projectile proj = zero;
 					proj.pos = v3(
 						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
 					);
+					proj.type = e_projectile_type_default;
 					proj.prev_pos = proj.pos;
 					proj.radius = randf_range(&rng, 0.5f, 1.5f);
 					proj.going_right = rand_bool(&rng);
 					game->projectile_arr.add(proj);
-					z += c_proj_step;
+					z += c_default_proj_z_step;
 				}
-				z += c_proj_step * 2;
+				z += c_default_proj_z_step * 2;
+			}
+		}
+
+		{
+			int z = c_bounce_proj_z_start;
+			while(z < c_bounce_proj_z_end) {
+				if(chance100(&rng, c_bounce_proj_chance)) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+					);
+					proj.type = e_projectile_type_bounce;
+					proj.prev_pos = proj.pos;
+					proj.radius = randf_range(&rng, 0.5f, 1.5f);
+					proj.going_right = rand_bool(&rng);
+					game->projectile_arr.add(proj);
+					z += c_bounce_proj_z_step;
+				}
+				z += c_bounce_proj_z_step * 2;
 			}
 		}
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -406,7 +426,7 @@ func void update()
 			game->hovered_boost != game->player.dash_target && can_dash
 		) {
 			game->want_dash_timestamp = 0;
-			game->player.state = e_player_state_dashing;
+			set_player_state(e_player_state_dashing);
 			game->player.dash_target = game->hovered_boost;
 		}
 	}
@@ -421,22 +441,30 @@ func void update()
 	switch(game->player.state) {
 		case e_player_state_default: {
 			if(handle_input) {
-				s_v3 temp0 = game->player.wanted_pos;
-				s_v3 temp1 = game->player.pos;
-				temp0.z = 0;
-				temp1.z = 0;
-				s_v3 v = temp0 - temp1;
-				float dist = v3_length(v);
-				float speed = smoothstep(0.0f, 5.0f, dist) * 0.3f;
-				v = v3_set_mag(v, min(dist, speed));
-				constexpr float z_speed = 0.1f;
-				game->player.z_speed.target = z_speed;
-				if(game->down_input.speed_boost) {
-					game->player.z_speed.target = z_speed * 3;
+				if(v3_length(game->player.vel) > 0.001f) {
+					game->player.pos += game->player.vel;
+					game->player.last_dir = game->player.vel;
+					game->player.vel *= 0.9f;
 				}
-				game->player.z_speed.curr = go_towards(game->player.z_speed.curr, game->player.z_speed.target, 0.01f);
-				v.z = -game->player.z_speed.curr;
-				game->player.pos += v;
+				else {
+					s_v3 temp0 = game->player.wanted_pos;
+					s_v3 temp1 = game->player.pos;
+					temp0.z = 0;
+					temp1.z = 0;
+					s_v3 v = temp0 - temp1;
+					float dist = v3_length(v);
+					float speed = smoothstep(0.0f, 5.0f, dist) * 0.3f;
+					v = v3_set_mag(v, min(dist, speed));
+					constexpr float z_speed = 0.1f;
+					game->player.z_speed.target = z_speed;
+					if(game->down_input.speed_boost) {
+						game->player.z_speed.target = z_speed * 3;
+					}
+					game->player.z_speed.curr = go_towards(game->player.z_speed.curr, game->player.z_speed.target, 0.01f);
+					v.z = -game->player.z_speed.curr;
+					game->player.pos += v;
+					game->player.last_dir = v;
+				}
 				at_least_ptr(&game->player.pos.x, -c_wall_x + 2);
 				at_most_ptr(&game->player.pos.x, c_wall_x - 2);
 			}
@@ -446,9 +474,10 @@ func void update()
 			assert(game->player.dash_target >= 0);
 			s_speed_boost* boost = &game->speed_boost_arr[game->player.dash_target];
 			game->player.pos = go_towards(game->player.pos, boost->pos, 1.0f);
+			game->player.last_dir = v3_normalized(boost->pos - game->player.pos);
 			if(v3_distance(game->player.pos, boost->pos) < 0.01f) {
 				game->speed_boost_arr.remove_and_swap(game->player.dash_target);
-				game->player.state = e_player_state_post_dash;
+				set_player_state(e_player_state_post_dash);
 				game->player.dash_target = -1;
 				game->player.post_dash_timestamp = game->update_time;
 				play_sound(e_sound_pop);
@@ -458,7 +487,7 @@ func void update()
 		case e_player_state_post_dash: {
 			float passed = game->update_time - game->player.post_dash_timestamp;
 			if(passed >= 0.5f) {
-				game->player.state = e_player_state_default;
+				set_player_state(e_player_state_default);
 			}
 		} break;
 	}
@@ -466,10 +495,21 @@ func void update()
 	if(game->state == e_game_state_default) {
 		foreach_val(proj_i, proj, game->projectile_arr) {
 			if(sphere_vs_sphere(game->player.pos, c_player_radius, proj.pos, proj.radius)) {
-				game->state = e_game_state_defeat;
-				game->defeat_timestamp = game->update_time;
-				play_sound(e_sound_defeat);
-				break;
+				if(proj.type == e_projectile_type_default) {
+					game->state = e_game_state_defeat;
+					game->defeat_timestamp = game->update_time;
+					play_sound(e_sound_defeat);
+					break;
+				}
+				else if(proj.type == e_projectile_type_bounce) {
+					game->player.vel = game->player.last_dir * -5;
+					game->projectile_arr.remove_and_swap(proj_i);
+					if(game->player.state == e_player_state_dashing || game->player.state == e_player_state_post_dash) {
+						set_player_state(e_player_state_default);
+					}
+					proj_i -= 1;
+					play_sound(e_sound_pop);
+				}
 			}
 		}
 	}
@@ -1220,6 +1260,9 @@ func void draw_game(s_ray ray, float interp_dt)
 			s_m4 model = m4_translate(proj_pos);
 			scale_m4_by_radius(&model, proj.radius);
 			s_v4 color = make_color(1.0f, 0.1f, 0.1f);
+			if(proj.type == e_projectile_type_bounce) {
+				color = make_color(0.1f, 0.1f, 1.0f);
+			}
 			draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
 		}
 	}
@@ -1302,4 +1345,12 @@ func void play_sound(e_sound sound_id)
 {
 	Mix_Chunk* chunk = game->sound_arr[sound_id];
 	Mix_PlayChannel(-1, chunk, 0);
+}
+
+func void set_player_state(e_player_state state)
+{
+	if(state != e_player_state_dashing) {
+		game->player.dash_target = -1;
+	}
+	game->player.state = state;
 }

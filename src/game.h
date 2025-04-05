@@ -297,14 +297,23 @@ struct s_player
 	e_player_state state;
 	int dash_target;
 	s_v3 pos;
+	s_v3 last_dir;
+	s_v3 vel;
 	s_v3 prev_pos;
 	s_v3 wanted_pos;
 	float post_dash_timestamp;
 	s_lerpable z_speed;
 };
 
+enum e_projectile_type
+{
+	e_projectile_type_default,
+	e_projectile_type_bounce,
+};
+
 struct s_projectile
 {
+	e_projectile_type type;
 	b8 going_right;
 	float radius;
 	s_v3 prev_pos;

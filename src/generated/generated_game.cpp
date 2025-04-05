@@ -31,3 +31,4 @@ func void toggle(t* out, t a, t b);
 func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos);
 func Mix_Chunk* load_sound_from_file(char* path);
 func void play_sound(e_sound sound_id);
+func void set_player_state(e_player_state state);
