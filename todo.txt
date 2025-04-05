@@ -1,0 +1,4 @@
+mouse doesnt work with non default resolution
+hot reloading?
+hot shader reloading?
+sounds

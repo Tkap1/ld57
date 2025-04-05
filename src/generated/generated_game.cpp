@@ -18,13 +18,16 @@ func s_shader load_shader_from_file(char* file, s_linear_arena* arena);
 func u8* read_file(char* path, s_linear_arena* arena);
 func void set_window_size(int width, int height);
 func s_rect do_letterbox(s_v2 curr_size, s_v2 base_size);
-func s_render_flush_data make_render_flush_data();
+func s_render_flush_data make_render_flush_data(s_v3 cam_pos);
 func s_mesh make_mesh_from_vertices(s_vertex* vertex_arr, int vertex_count);
 func s_ply_mesh parse_ply_mesh(char* path, s_linear_arena* arena);
 func s_mesh make_mesh_from_ply_file(char* file, s_linear_arena* arena);
 func void set_cull_mode(e_cull_mode mode);
 func void set_depth_mode(e_depth_mode mode);
 func void set_blend_mode(e_blend_mode mode);
-func void draw_game(e_shader shader_id);
+func void draw_game(s_ray ray, float interp_dt);
 template <typename t>
 func void toggle(t* out, t a, t b);
+func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos);
+func Mix_Chunk* load_sound_from_file(char* path);
+func void play_sound(e_sound sound_id);

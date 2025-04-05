@@ -108,9 +108,43 @@ union s_m4
 	float all2[4][4];
 };
 
+struct s_ray
+{
+	s_v3 pos;
+	s_v3 dir;
+};
+
+struct s_ray_collision
+{
+	b8 hit;
+	float distance;
+	s_v3 normal;
+	s_v3 point;
+};
+
 #include "generated/generated_tk_math.h"
 
 // -------------------------------------------------------------------------------------------
+
+
+template <typename t>
+static constexpr t at_least(t a, t b)
+{
+	return a > b ? a : b;
+}
+
+template <typename t>
+static constexpr t at_most(t a, t b)
+{
+	return b > a ? a : b;
+}
+
+template <typename t>
+static constexpr t clamp(t current, t min_val, t max_val)
+{
+	return at_most(max_val, at_least(min_val, current));
+}
+
 
 template <typename t0, typename t1>
 static constexpr s_v2 v2(t0 x, t1 y)
@@ -264,6 +298,13 @@ func void operator+=(s_v3& a, s_v3 b)
 	a.x += b.x;
 	a.y += b.y;
 	a.z += b.z;
+}
+
+func void operator*=(s_v3& a, float b)
+{
+	a.x *= b;
+	a.y *= b;
+	a.z *= b;
 }
 
 func void operator-=(s_v3& a, s_v3 b)
@@ -627,4 +668,291 @@ static int circular_index(int index, int size)
 		return index % size;
 	}
 	return (size - 1) - ((-index - 1) % size);
+}
+
+// -------------------------------------------------------------------------------------------------------------------------
+
+
+func s_ray get_camera_ray(s_v3 cam_pos, s_m4 view, s_m4 projection, s_v2 mouse, s_v2 world_size)
+{
+
+	float x = (2.0f * mouse.x) / world_size.x - 1.0f;
+
+	// @Note(tkap, 19/06/2022): y may not need to be reversed
+	float y = 1.0f - (2.0f * mouse.y) / world_size.y;
+
+	s_v3 ray_nds = v3(x, y, -1);
+
+	s_v4 ray_clip = v4(ray_nds.x, ray_nds.y, ray_nds.z, 1);
+
+	s_v4 ray_eye = v4_multiply_m4(ray_clip, m4_inverse(projection));
+	ray_eye = v4(ray_eye.x, ray_eye.y, -1.0, 0.0);
+
+	s_v3 ray_wor = v4_multiply_m4(ray_eye, m4_inverse(view)).xyz;
+	// don't forget to normalize the vector at some point
+	ray_wor = v3_normalized(ray_wor);
+
+	s_ray result = zero;
+	result.pos = cam_pos;
+	result.dir = ray_wor;
+	return result;
+}
+
+func s_m4 m4_inverse(const s_m4 m)
+{
+	s_m4 result = zero;
+	float det;
+	int i;
+
+	result.all[0] = m.all[5]  * m.all[10] * m.all[15] -
+				m.all[5]  * m.all[11] * m.all[14] -
+				m.all[9]  * m.all[6]  * m.all[15] +
+				m.all[9]  * m.all[7]  * m.all[14] +
+				m.all[13] * m.all[6]  * m.all[11] -
+				m.all[13] * m.all[7]  * m.all[10];
+
+	result.all[4] = -m.all[4]  * m.all[10] * m.all[15] +
+				m.all[4]  * m.all[11] * m.all[14] +
+				m.all[8]  * m.all[6]  * m.all[15] -
+				m.all[8]  * m.all[7]  * m.all[14] -
+				m.all[12] * m.all[6]  * m.all[11] +
+				m.all[12] * m.all[7]  * m.all[10];
+
+	result.all[8] = m.all[4]  * m.all[9] * m.all[15] -
+				m.all[4]  * m.all[11] * m.all[13] -
+				m.all[8]  * m.all[5] * m.all[15] +
+				m.all[8]  * m.all[7] * m.all[13] +
+				m.all[12] * m.all[5] * m.all[11] -
+				m.all[12] * m.all[7] * m.all[9];
+
+	result.all[12] = -m.all[4]  * m.all[9] * m.all[14] +
+					m.all[4]  * m.all[10] * m.all[13] +
+					m.all[8]  * m.all[5] * m.all[14] -
+					m.all[8]  * m.all[6] * m.all[13] -
+					m.all[12] * m.all[5] * m.all[10] +
+					m.all[12] * m.all[6] * m.all[9];
+
+	result.all[1] = -m.all[1]  * m.all[10] * m.all[15] +
+				m.all[1]  * m.all[11] * m.all[14] +
+				m.all[9]  * m.all[2] * m.all[15] -
+				m.all[9]  * m.all[3] * m.all[14] -
+				m.all[13] * m.all[2] * m.all[11] +
+				m.all[13] * m.all[3] * m.all[10];
+
+	result.all[5] = m.all[0]  * m.all[10] * m.all[15] -
+				m.all[0]  * m.all[11] * m.all[14] -
+				m.all[8]  * m.all[2] * m.all[15] +
+				m.all[8]  * m.all[3] * m.all[14] +
+				m.all[12] * m.all[2] * m.all[11] -
+				m.all[12] * m.all[3] * m.all[10];
+
+	result.all[9] = -m.all[0]  * m.all[9] * m.all[15] +
+				m.all[0]  * m.all[11] * m.all[13] +
+				m.all[8]  * m.all[1] * m.all[15] -
+				m.all[8]  * m.all[3] * m.all[13] -
+				m.all[12] * m.all[1] * m.all[11] +
+				m.all[12] * m.all[3] * m.all[9];
+
+	result.all[13] = m.all[0]  * m.all[9] * m.all[14] -
+				m.all[0]  * m.all[10] * m.all[13] -
+				m.all[8]  * m.all[1] * m.all[14] +
+				m.all[8]  * m.all[2] * m.all[13] +
+				m.all[12] * m.all[1] * m.all[10] -
+				m.all[12] * m.all[2] * m.all[9];
+
+	result.all[2] = m.all[1]  * m.all[6] * m.all[15] -
+				m.all[1]  * m.all[7] * m.all[14] -
+				m.all[5]  * m.all[2] * m.all[15] +
+				m.all[5]  * m.all[3] * m.all[14] +
+				m.all[13] * m.all[2] * m.all[7] -
+				m.all[13] * m.all[3] * m.all[6];
+
+	result.all[6] = -m.all[0]  * m.all[6] * m.all[15] +
+				m.all[0]  * m.all[7] * m.all[14] +
+				m.all[4]  * m.all[2] * m.all[15] -
+				m.all[4]  * m.all[3] * m.all[14] -
+				m.all[12] * m.all[2] * m.all[7] +
+				m.all[12] * m.all[3] * m.all[6];
+
+	result.all[10] = m.all[0]  * m.all[5] * m.all[15] -
+				m.all[0]  * m.all[7] * m.all[13] -
+				m.all[4]  * m.all[1] * m.all[15] +
+				m.all[4]  * m.all[3] * m.all[13] +
+				m.all[12] * m.all[1] * m.all[7] -
+				m.all[12] * m.all[3] * m.all[5];
+
+	result.all[14] = -m.all[0]  * m.all[5] * m.all[14] +
+					m.all[0]  * m.all[6] * m.all[13] +
+					m.all[4]  * m.all[1] * m.all[14] -
+					m.all[4]  * m.all[2] * m.all[13] -
+					m.all[12] * m.all[1] * m.all[6] +
+					m.all[12] * m.all[2] * m.all[5];
+
+	result.all[3] = -m.all[1] * m.all[6] * m.all[11] +
+				m.all[1] * m.all[7] * m.all[10] +
+				m.all[5] * m.all[2] * m.all[11] -
+				m.all[5] * m.all[3] * m.all[10] -
+				m.all[9] * m.all[2] * m.all[7] +
+				m.all[9] * m.all[3] * m.all[6];
+
+	result.all[7] = m.all[0] * m.all[6] * m.all[11] -
+				m.all[0] * m.all[7] * m.all[10] -
+				m.all[4] * m.all[2] * m.all[11] +
+				m.all[4] * m.all[3] * m.all[10] +
+				m.all[8] * m.all[2] * m.all[7] -
+				m.all[8] * m.all[3] * m.all[6];
+
+	result.all[11] = -m.all[0] * m.all[5] * m.all[11] +
+					m.all[0] * m.all[7] * m.all[9] +
+					m.all[4] * m.all[1] * m.all[11] -
+					m.all[4] * m.all[3] * m.all[9] -
+					m.all[8] * m.all[1] * m.all[7] +
+					m.all[8] * m.all[3] * m.all[5];
+
+	result.all[15] = m.all[0] * m.all[5] * m.all[10] -
+				m.all[0] * m.all[6] * m.all[9] -
+				m.all[4] * m.all[1] * m.all[10] +
+				m.all[4] * m.all[2] * m.all[9] +
+				m.all[8] * m.all[1] * m.all[6] -
+				m.all[8] * m.all[2] * m.all[5];
+
+	det = m.all[0] * result.all[0] + m.all[1] * result.all[4] + m.all[2] * result.all[8] + m.all[3] * result.all[12];
+
+	if(det == 0)
+		return result;
+
+	det = 1.0f / det;
+
+	for (i = 0; i < 16; i += 1) {
+		result.all[i] = result.all[i] * det;
+	}
+
+	return result;
+}
+
+func s_v3 ray_at_y(s_ray ray, float y)
+{
+	float t = (y - ray.pos.y) / ray.dir.y;
+	return ray.pos + ray.dir * t;
+}
+
+func float lerp(float a, float b, float t)
+{
+	float result = a + (b - a) * t;
+	return result;
+}
+
+func s_v3 lerp_v3(s_v3 a, s_v3 b, float t)
+{
+	s_v3 result = zero;
+	result.x = lerp(a.x, b.x, t);
+	result.y = lerp(a.y, b.y, t);
+	result.z = lerp(a.z, b.z, t);
+	return result;
+}
+
+func float range_lerp(float input_val, float input_start, float input_end, float output_start, float output_end)
+{
+	return output_start + ((output_end - output_start) / (input_end - input_start)) * (input_val - input_start);
+}
+
+template <typename t>
+static t min(t a, t b)
+{
+	return a <= b ? a : b;
+}
+
+func s_v3 v3_set_mag(s_v3 v, float len)
+{
+	v = v3_normalized(v);
+	v *= len;
+	return v;
+}
+
+static float smoothstep(float edge0, float edge1, float x)
+{
+	// Scale, bias and saturate x to 0..1 range
+	x = clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+	// Evaluate polynomial
+	return x * x * (3 - 2 * x);
+}
+
+static float ilerp(float start, float end, float val)
+{
+	float b = end - start;
+	if(b == 0) { return val; }
+	return (val - start) / b;
+}
+
+template <typename t>
+func void at_most_ptr(t* ptr, t max_val)
+{
+	*ptr = at_most(max_val, *ptr);
+}
+
+template <typename t>
+func void at_least_ptr(t* ptr, t min_val)
+{
+	*ptr = at_least(min_val, *ptr);
+}
+
+func int ceilfi(float x)
+{
+	int result = (int)ceil(x);
+	return result;
+}
+
+func int roundfi(float x)
+{
+	int result = (int)roundf(x);
+	return result;
+}
+
+func float v3_distance(s_v3 a, s_v3 b)
+{
+	s_v3 c = a - b;
+	float result = v3_length(c);
+	return result;
+}
+
+func float go_towards(float from, float to, float amount)
+{
+	assert(amount >= 0);
+
+	float result = from;
+	float dist = to - from;
+	int s = (int)sign(dist);
+	result += min(fabsf(dist), amount) * s;
+	return result;
+}
+
+func s_v3 go_towards(s_v3 from, s_v3 to, float amount)
+{
+	assert(amount >= 0);
+
+	s_v3 result = from;
+	s_v3 dir = to - from;
+	s_v3 dir_n = v3_normalized(dir);
+	result.x = go_towards(from.x, to.x, amount * fabsf(dir_n.x));
+	result.y = go_towards(from.y, to.y, amount * fabsf(dir_n.y));
+	result.z = go_towards(from.z, to.z, amount * fabsf(dir_n.z));
+	return result;
+}
+
+
+func float sign(float x)
+{
+	return x >= 0 ? 1.0f : -1.0f;
+}
+
+func b8 sphere_vs_sphere(s_v3 pos1, float r1, s_v3 pos2, float r2)
+{
+	float dist = v3_distance(pos1, pos2);
+	b8 result = dist < (r1 + r2);
+	return result;
+}
+
+func void scale_m4_by_radius(s_m4* out, float radius)
+{
+	*out = m4_multiply(*out, m4_scale(v3(radius * 2)));
 }

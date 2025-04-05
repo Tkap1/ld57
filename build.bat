@@ -14,7 +14,7 @@ set platform_file=..\src\platform.cpp
 set exe_name=main
 
 set comp=-nologo -std:c++20 -Zc:strictStrings- -Wall -FC -Gm- -GR- -EHa- -D_CRT_SECURE_NO_WARNINGS
-set comp=!comp! -wd4201 -wd4100 -wd4464 -wd4820 -wd5219 -wd4365 -wd4514 -wd5045 -wd5220 -wd5204 -wd4191 -wd4577 -wd4062 -wd4686 -wd4711 -wd4710 -wd4061 -wd4505 -wd4324 -wd4127 -wd5246
+set comp=!comp! -wd4201 -wd4464 -wd4820 -wd5219 -wd4365 -wd4514 -wd5045 -wd5220 -wd5204 -wd4191 -wd4577 -wd4062 -wd4686 -wd4711 -wd4710 -wd4061 -wd4505 -wd4324 -wd4127 -wd5246
 @REM set comp=!comp! -fsanitize=address
 
 set comp=!comp! -I"C:\Users\34687\Desktop\Dev\C\sdl"

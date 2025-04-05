@@ -66,9 +66,7 @@ void init(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
-
-	game->player_pos.z = 2;
-	game->player_rot = make_quaternion();
+	game->speed_index = 5;
 
 	{
 		u8* memory = platform_data->memory + sizeof(s_game);
@@ -137,6 +135,7 @@ void init(s_platform_data* platform_data)
 	{
 		game->mesh_arr[e_mesh_cube] = make_mesh_from_ply_file("assets/cube.ply", &game->render_frame_arena);
 		game->mesh_arr[e_mesh_monkey] = make_mesh_from_ply_file("assets/monkey.ply", &game->render_frame_arena);
+		game->mesh_arr[e_mesh_sphere] = make_mesh_from_ply_file("assets/sphere.ply", &game->render_frame_arena);
 	}
 
 	{
@@ -162,10 +161,13 @@ void init(s_platform_data* platform_data)
 		bind_framebuffer(0);
 	}
 
-	game->shader_arr[e_shader_mesh] = load_shader_from_file("shaders/mesh.shader", &game->render_frame_arena);
-	game->shader_arr[e_shader_depth_only] = load_shader_from_file("shaders/depth_only.shader", &game->render_frame_arena);
-	game->shader_arr[e_shader_flat] = load_shader_from_file("shaders/flat.shader", &game->render_frame_arena);
+	for(int i = 0; i < e_shader_count; i += 1) {
+		game->shader_arr[i] = load_shader_from_file(c_shader_path_arr[i], &game->render_frame_arena);
+	}
 
+	for(int i = 0; i < e_sound_count; i += 1) {
+		game->sound_arr[i] = load_sound_from_file(c_sound_path_arr[i]);
+	}
 }
 
 void init_after_recompile(s_platform_data* platform_data)
@@ -195,7 +197,7 @@ void do_game(s_platform_data* platform_data)
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
 
-	float delta = (float)(get_seconds() - game->time_before);
+	f64 delta64 = get_seconds() - game->time_before;
 	game->time_before = get_seconds();
 
 	{
@@ -214,9 +216,14 @@ void do_game(s_platform_data* platform_data)
 	}
 
 	input();
-	update();
-	float interp_dt = 1;
-	render(interp_dt, delta);
+	float game_speed = c_game_speed_arr[game->speed_index];
+	game->accumulator += delta64 * game_speed;
+	while(game->accumulator >= c_update_delay) {
+		game->accumulator -= c_update_delay;
+		update();
+	}
+	float interp_dt = (float)(game->accumulator / c_update_delay);
+	render(interp_dt, (float)delta64);
 }
 
 func void input()
@@ -224,29 +231,27 @@ func void input()
 	{
 		int x;
 		int y;
-		SDL_GetMouseState(&x, &y);
+		u32 state = SDL_GetMouseState(&x, &y);
+		game->down_input.speed_boost = state & SDL_BUTTON(1);
 		g_mouse = v2(x, y);
 	}
 
 	s_v3 dir = zero;
 	u8* key_state = (u8*)SDL_GetKeyboardState(null);
-	if(key_state[SDL_SCANCODE_A]) {
-		dir.x -= 1;
-	}
-	if(key_state[SDL_SCANCODE_D]) {
-		dir.x += 1;
-	}
-	if(key_state[SDL_SCANCODE_W]) {
-		dir.y += 1;
-	}
-	if(key_state[SDL_SCANCODE_S]) {
-		dir.y -= 1;
-	}
-	dir = v3_normalized(dir);
-	game->player_pos += dir * 0.5f;
-	if(v3_length(dir) > 0) {
-		game->player_rot = dir_to_quaternion(dir);
-	}
+	// if(key_state[SDL_SCANCODE_A]) {
+	// 	dir.x -= 1;
+	// }
+	// if(key_state[SDL_SCANCODE_D]) {
+	// 	dir.x += 1;
+	// }
+	// if(key_state[SDL_SCANCODE_W]) {
+	// 	dir.y += 1;
+	// }
+	// if(key_state[SDL_SCANCODE_S]) {
+	// 	dir.y -= 1;
+	// }
+	// dir = v3_normalized(dir);
+	// game->player.pos += dir * 0.5f;
 
 	SDL_Event event;
 	while(SDL_PollEvent(&event) != 0) {
@@ -274,6 +279,22 @@ func void input()
 					else if(event.key.keysym.sym == SDLK_g) {
 						game->view_state = (e_view_state)circular_index(game->view_state - 1, e_view_state_count);
 					}
+					else if(event.key.keysym.sym == SDLK_f && event.key.repeat == 0) {
+						game->want_dash_timestamp = game->update_time;
+					}
+					else if(event.key.keysym.sym == SDLK_r && event.key.repeat == 0) {
+						game->dont_reset_game = false;
+					}
+					#if defined(m_debug)
+					else if(event.key.keysym.sym == SDLK_KP_PLUS) {
+						game->speed_index = circular_index(game->speed_index + 1, array_count(c_game_speed_arr));
+						printf("Game speed: %f\n", c_game_speed_arr[game->speed_index]);
+					}
+					else if(event.key.keysym.sym == SDLK_KP_MINUS) {
+						game->speed_index = circular_index(game->speed_index - 1, array_count(c_game_speed_arr));
+						printf("Game speed: %f\n", c_game_speed_arr[game->speed_index]);
+					}
+					#endif // m_debug
 				}
 				// int key = sdl_key_to_windows_key(event.key.keysym.sym);
 				// if(key == -1) { break; }
@@ -313,6 +334,169 @@ func void input()
 func void update()
 {
 	game->update_frame_arena.used = 0;
+	game->player.prev_pos = game->player.pos;
+
+	if(!game->dont_reset_game) {
+		game->player = zero;
+		game->state = e_game_state_default;
+		game->dont_reset_game = true;
+		game->speed_boost_arr.count = 0;
+		game->projectile_arr.count = 0;
+		game->player.dash_target = -1;
+
+		s_rng rng = make_rng(0);
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		{
+			int z = 10;
+			while(z < 1000) {
+				if(chance100(&rng, 50)) {
+					int count = rand_range_ii(&rng, 1, 5);
+					for(int i = 0; i < count; i += 1) {
+						s_speed_boost boost = zero;
+						boost.pos = v3(
+							-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+						);
+						z += 10;
+						game->speed_boost_arr.add(boost);
+					}
+				}
+				z += 20;
+			}
+		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		{
+			int z = 10;
+			while(z < 1000) {
+				if(chance100(&rng, c_proj_chance)) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+					);
+					proj.prev_pos = proj.pos;
+					proj.radius = randf_range(&rng, 0.5f, 1.5f);
+					proj.going_right = rand_bool(&rng);
+					game->projectile_arr.add(proj);
+					z += c_proj_step;
+				}
+				z += c_proj_step * 2;
+			}
+		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	}
+
+	b8 handle_input = game->state == e_game_state_default;
+	b8 can_dash = false;
+	b8 update_entities = game->state != e_game_state_defeat;
+	if(handle_input) {
+		can_dash = true;
+		if(game->player.state == e_player_state_dashing) {
+			s_speed_boost* boost = &game->speed_boost_arr[game->player.dash_target];
+			if(v3_distance(game->player.pos, boost->pos) >= 0.01f) {
+				can_dash = false;
+			}
+		}
+	}
+
+	{
+		float passed = game->update_time - game->want_dash_timestamp;
+		if(
+			game->hovered_boost >= 0 && passed <= 0.1f && game->want_dash_timestamp > 0 &&
+			game->hovered_boost != game->player.dash_target && can_dash
+		) {
+			game->want_dash_timestamp = 0;
+			game->player.state = e_player_state_dashing;
+			game->player.dash_target = game->hovered_boost;
+		}
+	}
+
+	if(game->state == e_game_state_defeat) {
+		float passed = game->update_time - game->defeat_timestamp;
+		if(passed >= 0.5f) {
+			game->dont_reset_game = false;
+		}
+	}
+
+	switch(game->player.state) {
+		case e_player_state_default: {
+			if(handle_input) {
+				s_v3 temp0 = game->player.wanted_pos;
+				s_v3 temp1 = game->player.pos;
+				temp0.z = 0;
+				temp1.z = 0;
+				s_v3 v = temp0 - temp1;
+				float dist = v3_length(v);
+				float speed = smoothstep(0.0f, 5.0f, dist) * 0.3f;
+				v = v3_set_mag(v, min(dist, speed));
+				constexpr float z_speed = 0.1f;
+				game->player.z_speed.target = z_speed;
+				if(game->down_input.speed_boost) {
+					game->player.z_speed.target = z_speed * 3;
+				}
+				game->player.z_speed.curr = go_towards(game->player.z_speed.curr, game->player.z_speed.target, 0.01f);
+				v.z = -game->player.z_speed.curr;
+				game->player.pos += v;
+				at_least_ptr(&game->player.pos.x, -c_wall_x + 2);
+				at_most_ptr(&game->player.pos.x, c_wall_x - 2);
+			}
+		} break;
+
+		case e_player_state_dashing: {
+			assert(game->player.dash_target >= 0);
+			s_speed_boost* boost = &game->speed_boost_arr[game->player.dash_target];
+			game->player.pos = go_towards(game->player.pos, boost->pos, 1.0f);
+			if(v3_distance(game->player.pos, boost->pos) < 0.01f) {
+				game->speed_boost_arr.remove_and_swap(game->player.dash_target);
+				game->player.state = e_player_state_post_dash;
+				game->player.dash_target = -1;
+				game->player.post_dash_timestamp = game->update_time;
+				play_sound(e_sound_pop);
+			}
+		} break;
+
+		case e_player_state_post_dash: {
+			float passed = game->update_time - game->player.post_dash_timestamp;
+			if(passed >= 0.5f) {
+				game->player.state = e_player_state_default;
+			}
+		} break;
+	}
+
+	if(game->state == e_game_state_default) {
+		foreach_val(proj_i, proj, game->projectile_arr) {
+			if(sphere_vs_sphere(game->player.pos, c_player_radius, proj.pos, proj.radius)) {
+				game->state = e_game_state_defeat;
+				game->defeat_timestamp = game->update_time;
+				play_sound(e_sound_defeat);
+				break;
+			}
+		}
+	}
+
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		update projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	{
+		foreach_ptr(proj_i, proj, game->projectile_arr) {
+			proj->prev_pos = proj->pos;
+			if(update_entities) {
+				if(proj->going_right) {
+					proj->pos.x += 0.1f;
+				}
+				else {
+					proj->pos.x -= 0.1f;
+				}
+				if(proj->pos.x <= -c_wall_x + 2) {
+					proj->going_right = !proj->going_right;
+				}
+				else if(proj->pos.x >= c_wall_x - 2) {
+					proj->going_right = !proj->going_right;
+				}
+			}
+		}
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		update projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+	game->update_time += (float)c_update_delay;
 }
 
 func void render(float interp_dt, float delta)
@@ -336,90 +520,74 @@ func void render(float interp_dt, float delta)
 	s_m4 ortho = make_orthographic(0, (float)g_platform_data->window_size.x, (float)g_platform_data->window_size.y, 0, -1, 1);
 	s_m4 perspective = make_perspective(60.0f, c_world_size.x / c_world_size.y, 0.01f, 100.0f);
 
+	s_v3 player_pos = lerp_v3(game->player.prev_pos, game->player.pos, interp_dt);
+
 	s_v3 cam_pos = v3(
-		game->player_pos.x,
-		game->player_pos.y - 20,
-		20.0f
+		0, -20, player_pos.z - 5
 	);
-	s_m4 view = look_at(cam_pos, game->player_pos, c_up_axis);
+	s_v3 cam_forward = v3_normalized(v3(0, 1, -0.1f));
+	s_m4 view = look_at(cam_pos, cam_pos + cam_forward, c_up_axis);
+
+	s_ray ray = get_camera_ray(cam_pos, view, perspective, g_mouse, c_world_size);
+	// printf("%f, %f, %f\n", ray.dir.x, ray.dir.y, ray.dir.z);
+
+	{
+		s_v3 p = ray_at_y(ray, 0.0f);
+		game->player.wanted_pos = p;
+		// p.z = 0;
+		// s_v3 temp = game->player.pos;
+		// temp.z = 0;
+		// game->player_dir = v3_normalized(p - temp);
+		// float z_speed = range_lerp(g_mouse.y / c_world_size.y, 0, 1, 0.1f, 2.0f);
+		// game->player_dir.z = -z_speed;
+	}
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render into depth start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		draw_game(e_shader_depth_only);
-		s_render_flush_data data = make_render_flush_data();
-		data.projection = light_projection;
-		data.view = light_view;
-		data.fbo = game->shadow_map_fbo;
-		clear_framebuffer_depth(game->shadow_map_fbo.id);
-		render_flush(data, true);
+		// draw_game(e_shader_depth_only);
+		// s_render_flush_data data = make_render_flush_data();
+		// data.projection = light_projection;
+		// data.view = light_view;
+		// data.fbo = game->shadow_map_fbo;
+		// clear_framebuffer_depth(game->shadow_map_fbo.id);
+		// render_flush(data, true);
 	}
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render into depth end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 	if(game->view_state == e_view_state_shadow_map) {
 		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map);
-		s_render_flush_data data = make_render_flush_data();
+		s_render_flush_data data = make_render_flush_data(cam_pos);
 		data.projection = ortho;
 		clear_framebuffer_depth(0);
-		clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+		clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 		render_flush(data, true);
 	}
 
 	else if(game->view_state == e_view_state_curr_depth) {
-		draw_game(e_shader_mesh);
-		s_render_flush_data data = make_render_flush_data();
+		draw_game(ray, interp_dt);
+		s_render_flush_data data = make_render_flush_data(cam_pos);
 		data.projection = light_projection;
 		data.view = light_view;
 		data.light_projection = light_projection;
 		data.light_view = light_view;
 		clear_framebuffer_depth(0);
-		clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+		clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 		render_flush(data, true);
 	}
 	else {
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		{
-			draw_game(e_shader_mesh);
-			s_render_flush_data data = make_render_flush_data();
+			draw_game(ray, interp_dt);
+			s_render_flush_data data = make_render_flush_data(cam_pos);
 			data.projection = perspective;
 			data.view = view;
 			data.light_projection = light_projection;
 			data.light_view = light_view;
 			clear_framebuffer_depth(0);
-			clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+			clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 			render_flush(data, true);
 		}
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-	}
-
-	// {
-	// 	s_m4 model = m4_translate(game->player_pos);
-	// 	model = m4_multiply(model, quaternion_to_m4(game->player_rot));
-	// 	draw_mesh(e_mesh_monkey, model, make_color(1));
-	// }
-
-	// s_rng rng = make_rng(0);
-	// for(int y = 0; y < 100; y += 1) {
-	// 	for(int x = 0; x < 100; x += 1) {
-	// 		s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
-	// 		model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-	// 		draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
-	// 	}
-	// }
-	// for(int y = 0; y < 100; y += 1) {
-	// 	for(int x = 0; x < 100; x += 1) {
-	// 		if(chance100(&rng, 10)) {
-	// 			s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
-	// 			model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-	// 			draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
-	// 		}
-	// 	}
-	// }
-
-	{
-		s_render_flush_data data = make_render_flush_data();
-		data.projection = perspective;
-		data.view = view;
-		render_flush(data, true);
 	}
 
 	SDL_GL_SwapWindow(g_platform_data->window);
@@ -554,6 +722,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		uniform_data.light_view = data.light_view;
 		uniform_data.light_projection = data.light_projection;
 		uniform_data.render_time = game->render_time;
+		uniform_data.cam_pos = data.cam_pos;
 		// data.view = render_pass_data.view;
 		// data.projection = render_pass_data.projection;
 		// data.base_res = g_base_res;
@@ -587,7 +756,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		}
 
 		gl(glBindVertexArray(mesh->vao));
-		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo));
+		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo.id));
 		gl(glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(s_instance_data) * *instance_count, instance_data));
 		gl(glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertex_count, *instance_count));
 		if(reset_render_count) {
@@ -625,8 +794,11 @@ func void add_to_render_group(s_instance_data data, e_shader shader_id, e_textur
 		else {
 			new_max_elements *= 2;
 		}
-		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo));
-		gl(glBufferData(GL_ARRAY_BUFFER, sizeof(s_instance_data) * new_max_elements, null, GL_DYNAMIC_DRAW));
+		if(new_max_elements > mesh->instance_vbo.max_elements) {
+			gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo.id));
+			gl(glBufferData(GL_ARRAY_BUFFER, sizeof(s_instance_data) * new_max_elements, null, GL_DYNAMIC_DRAW));
+			mesh->instance_vbo.max_elements = new_max_elements;
+		}
 	}
 	if(get_new_ptr) {
 		s_instance_data* temp = (s_instance_data*)arena_alloc(&game->render_frame_arena, sizeof(s_instance_data) * new_max_elements);
@@ -762,13 +934,14 @@ func s_rect do_letterbox(s_v2 curr_size, s_v2 base_size)
 	return rect_result;
 }
 
-func s_render_flush_data make_render_flush_data()
+func s_render_flush_data make_render_flush_data(s_v3 cam_pos)
 {
 	s_render_flush_data result = zero;
 	result.view = m4_identity();
 	result.projection = m4_identity();
 	result.light_view = m4_identity();
 	result.light_projection = m4_identity();
+	result.cam_pos = cam_pos;
 	result.cull_mode = e_cull_mode_disabled;
 	result.blend_mode = e_blend_mode_normal;
 	result.depth_mode = e_depth_mode_read_and_write;
@@ -814,8 +987,8 @@ func s_mesh make_mesh_from_vertices(s_vertex* vertex_arr, int vertex_count)
 	}
 
 	{
-		gl(glGenBuffers(1, &result.instance_vbo));
-		gl(glBindBuffer(GL_ARRAY_BUFFER, result.instance_vbo));
+		gl(glGenBuffers(1, &result.instance_vbo.id));
+		gl(glBindBuffer(GL_ARRAY_BUFFER, result.instance_vbo.id));
 
 		u8* offset = 0;
 		constexpr int stride = sizeof(float) * 20;
@@ -1018,34 +1191,85 @@ func void set_blend_mode(e_blend_mode mode)
 	}
 }
 
-func void draw_game(e_shader shader_id)
+func void draw_game(s_ray ray, float interp_dt)
 {
+	s_v3 ray_p = ray_at_y(ray, 0.0f);
+	s_v3 player_pos = lerp_v3(game->player.prev_pos, game->player.pos, interp_dt);
+
+	for(int i = 0; i < 20; i += 1) {
+		int vertical_index = ceilfi((player_pos.z + 10) / 2);
+		float z = vertical_index * 2.0f;
+		z -= i * 2.0f;
+		s_v4 color = make_color((vertical_index + i) & 1 ? 0.5f : 1.0f);
+		{
+			s_m4 model = m4_translate(v3(-c_wall_x, 0.0f, z));
+			model = m4_multiply(model, m4_scale(v3(2.0f)));
+			draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+		}
+		{
+			s_m4 model = m4_translate(v3(c_wall_x, 0.0f, z));
+			model = m4_multiply(model, m4_scale(v3(2.0f)));
+			draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+		}
+	}
+
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		s_m4 model = m4_translate(game->player_pos);
-		model = m4_multiply(model, quaternion_to_m4(game->player_rot));
-		model = m4_multiply(model, m4_scale(v3(5)));
-		draw_mesh(e_mesh_monkey, model, make_color(1), shader_id);
+		foreach_val(proj_i, proj, game->projectile_arr) {
+			s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
+			s_m4 model = m4_translate(proj_pos);
+			scale_m4_by_radius(&model, proj.radius);
+			s_v4 color = make_color(1.0f, 0.1f, 0.1f);
+			draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
+		}
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+	game->hovered_boost = -1;
+	foreach_val(boost_i, boost, game->speed_boost_arr) {
+		s_m4 model = m4_translate(boost.pos);
+		scale_m4_by_radius(&model, c_boost_radius);
+		s_v4 color = make_color(0.1f, 1, 0.1f);
+		if(boost_is_hovered(ray_p, boost.pos)) {
+			color = make_color(0.5f, 1, 0.5f);
+			game->hovered_boost = boost_i;
+		}
+		draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
 	}
 
 	{
-		s_rng rng = make_rng(0);
-		for(int y = 0; y < 100; y += 1) {
-			for(int x = 0; x < 100; x += 1) {
-				s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
-				model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-				draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
-			}
-		}
-		for(int y = 0; y < 100; y += 1) {
-			for(int x = 0; x < 100; x += 1) {
-				if(chance100(&rng, 10)) {
-					s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
-					model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-					draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
-				}
-			}
-		}
+		s_m4 model = m4_translate(player_pos);
+		scale_m4_by_radius(&model, c_player_radius);
+		draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
 	}
+
+
+	// {
+	// 	s_m4 model = m4_translate(game->player.pos);
+	// 	model = m4_multiply(model, quaternion_to_m4(game->player_rot));
+	// 	model = m4_multiply(model, m4_scale(v3(5)));
+	// 	draw_mesh(e_mesh_monkey, model, make_color(1), shader_id);
+	// }
+
+	// {
+	// 	s_rng rng = make_rng(0);
+	// 	for(int y = 0; y < 100; y += 1) {
+	// 		for(int x = 0; x < 100; x += 1) {
+	// 			s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
+	// 			model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+	// 			draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
+	// 		}
+	// 	}
+	// 	for(int y = 0; y < 100; y += 1) {
+	// 		for(int x = 0; x < 100; x += 1) {
+	// 			if(chance100(&rng, 10)) {
+	// 				s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
+	// 				model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+	// 				draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
+	// 			}
+	// 		}
+	// 	}
+	// }
 }
 
 template <typename t>
@@ -1058,4 +1282,24 @@ func void toggle(t* out, t a, t b)
 		*out = a;
 	}
 	invalid_else;
+}
+
+func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos)
+{
+	float dist = v3_distance(mouse_point, boost_pos);
+	b8 result = dist <= c_boost_radius * 2;
+	return result;
+}
+
+func Mix_Chunk* load_sound_from_file(char* path)
+{
+	Mix_Chunk* chunk = Mix_LoadWAV(path);
+	assert(chunk);
+	return chunk;
+}
+
+func void play_sound(e_sound sound_id)
+{
+	Mix_Chunk* chunk = game->sound_arr[sound_id];
+	Mix_PlayChannel(-1, chunk, 0);
 }

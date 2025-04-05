@@ -19,10 +19,11 @@ layout(std140) uniform ublock
 	s_m4 light_projection;
 	s_v2 base_res;
 	s_v2 window_size;
+	s_v3 cam_pos;
 	float render_time;
-	float pad_0;
-	float pad_1;
-	float pad_2;
+	// float pad0;
+	// float pad1;
+	// float pad2;
 };
 #if defined(m_cpu_side)
 #pragma pack(pop)

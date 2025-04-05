@@ -103,6 +103,7 @@ enum e_mesh
 	e_mesh_quad,
 	e_mesh_cube,
 	e_mesh_monkey,
+	e_mesh_sphere,
 	e_mesh_count,
 };
 
@@ -111,7 +112,15 @@ enum e_shader
 	e_shader_mesh,
 	e_shader_depth_only,
 	e_shader_flat,
+	e_shader_fresnel,
 	e_shader_count,
+};
+
+global constexpr char* c_shader_path_arr[e_shader_count] = {
+	"shaders/mesh.shader",
+	"shaders/depth_only.shader",
+	"shaders/flat.shader",
+	"shaders/fresnel.shader",
 };
 
 enum e_texture
@@ -119,6 +128,24 @@ enum e_texture
 	e_texture_white,
 	e_texture_shadow_map,
 	e_texture_count
+};
+
+enum e_game_state
+{
+	e_game_state_default,
+	e_game_state_defeat,
+};
+
+enum e_sound
+{
+	e_sound_pop,
+	e_sound_defeat,
+	e_sound_count,
+};
+
+global constexpr char* c_sound_path_arr[e_sound_count] = {
+	"assets/pop.wav",
+	"assets/defeat.wav"
 };
 
 enum e_depth_mode
@@ -207,6 +234,7 @@ struct s_render_flush_data
 	e_blend_mode blend_mode;
 	e_depth_mode depth_mode;
 	e_cull_mode cull_mode;
+	s_v3 cam_pos;
 	s_fbo fbo;
 };
 
@@ -217,12 +245,18 @@ struct s_render_group
 	e_mesh mesh_id;
 };
 
+struct s_vbo
+{
+	u32 id;
+	int max_elements;
+};
+
 struct s_mesh
 {
 	int vertex_count;
 	u32 vao;
 	u32 vertex_vbo;
-	u32 instance_vbo;
+	s_vbo instance_vbo;
 };
 
 struct s_texture
@@ -233,6 +267,48 @@ struct s_texture
 struct s_shader
 {
 	u32 id;
+};
+
+struct s_speed_boost
+{
+	s_v3 pos;
+};
+
+struct s_down_input
+{
+	b8 speed_boost;
+};
+
+struct s_lerpable
+{
+	float curr;
+	float target;
+};
+
+enum e_player_state
+{
+	e_player_state_default,
+	e_player_state_dashing,
+	e_player_state_post_dash,
+};
+
+struct s_player
+{
+	e_player_state state;
+	int dash_target;
+	s_v3 pos;
+	s_v3 prev_pos;
+	s_v3 wanted_pos;
+	float post_dash_timestamp;
+	s_lerpable z_speed;
+};
+
+struct s_projectile
+{
+	b8 going_right;
+	float radius;
+	s_v3 prev_pos;
+	s_v3 pos;
 };
 
 struct s_game
@@ -247,11 +323,21 @@ struct s_game
 	float update_time;
 	f64 accumulator;
 	f64 time_before;
-	s_v3 player_pos;
-	s_quaternion player_rot;
 	s_fbo shadow_map_fbo;
 	u32 curr_fbo;
 	e_view_state view_state;
+	b8 dont_reset_game;
+	s_down_input down_input;
+	float want_dash_timestamp;
+	int hovered_boost;
+	s_player player;
+	e_game_state state;
+	Mix_Chunk* sound_arr[e_sound_count];
+	int speed_index;
+	float defeat_timestamp;
+
+	s_list<s_speed_boost, 1024> speed_boost_arr;
+	s_list<s_projectile, 1024> projectile_arr;
 
 	int render_instance_count[e_shader_count][e_texture_count][e_mesh_count];
 	int render_instance_max_elements[e_shader_count][e_texture_count][e_mesh_count];

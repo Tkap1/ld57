@@ -37,41 +37,20 @@ out vec4 out_color;
 void main()
 {
 	vec3 normal = normalize(v_normal);
-	// vec3 color = normal * 0.5 + 0.5;
 	vec3 color = vec3(0.0);
 
-	// vec3 light_frag_pos = v_light_frag_pos.xyz / v_light_frag_pos.w;
-	// float curr_depth = light_frag_pos.z * 0.5 + 0.5;
-	// vec2 temp = light_frag_pos.xy * 0.5 + 0.5;
-	// // temp.y = 1.0 - temp.y;
-	// float closest_depth = texture(shadow_map, temp).r;
-	// float shadow = 0.0f;
-	// float bias = 0.006;
-	// if(closest_depth + bias < curr_depth) {
-	// 	shadow = 0.75f;
-	// }
-	float shadow = 0.0;
+	vec3 dir = normalize(cam_pos.xyz - v_frag_pos);
+	float n = dot(dir, normal);
+	float n2 = 0.0;
+	const float step = 0.9;
+	if(n > 0.0) {
+		n2 = smoothstep(step, 0.0, n);
+	}
+	else {
+		n2 = smoothstep(-step, 0.0, n);
+	}
+	color.r += n2;
 
-	vec3 light_dir = normalize(vec3(1.0, 1.0, -1.0));
-
-	float d = max(0.0, dot(-light_dir, normal)) * 0.5 + 0.5;
-	color = v_color.rgb * d * (1.0 - shadow);
-
-	// color = vec3(d);
-	// color = vec3(curr_depth);
-	// color = vec3(shadow);
-	// if(temp.x < 0.0 || temp.x > 1.0) {
-	// 	color = vec3(0.0, 1.0, 0.0);
-	// }
-	// if(temp.y < 0.0 || temp.y > 1.0) {
-	// 	color = vec3(1.0, 0.0, 0.0);
-	// }
-	// if(curr_depth < 0.0) {
-	// 	color = vec3(0.0, 0.0, 1.0);
-	// }
-	// else if(curr_depth <= 0.0) {
-	// 	color = vec3(1.0, 0.0, 1.0);
-	// }
 	out_color = vec4(color, 1.0);
 }
 #endif
