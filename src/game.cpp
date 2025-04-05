@@ -31,6 +31,11 @@
 #include "external/glcorearb.h"
 #endif
 
+#if defined(__EMSCRIPTEN__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-value"
+#endif
+
 #pragma warning(push, 0)
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ASSERT
@@ -40,6 +45,11 @@
 #define STBTT_assert
 #include "external/stb_truetype.h"
 #pragma warning(pop)
+
+#if defined(__EMSCRIPTEN__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-value"
+#endif
 
 
 #include "tk_types.h"
@@ -253,24 +263,10 @@ func void input()
 		u32 state = SDL_GetMouseState(&x, &y);
 		game->down_input.speed_boost = state & SDL_BUTTON(1);
 		g_mouse = v2(x, y);
+		s_rect letterbox = do_letterbox(v2(g_platform_data->window_size), c_world_size);
+		g_mouse.x = range_lerp(g_mouse.x, letterbox.x, letterbox.x + letterbox.size.x, 0, c_world_size.x);
+		g_mouse.y = range_lerp(g_mouse.y, letterbox.y, letterbox.y + letterbox.size.y, 0, c_world_size.y);
 	}
-
-	s_v3 dir = zero;
-	// u8* key_state = (u8*)SDL_GetKeyboardState(null);
-	// if(key_state[SDL_SCANCODE_A]) {
-	// 	dir.x -= 1;
-	// }
-	// if(key_state[SDL_SCANCODE_D]) {
-	// 	dir.x += 1;
-	// }
-	// if(key_state[SDL_SCANCODE_W]) {
-	// 	dir.y += 1;
-	// }
-	// if(key_state[SDL_SCANCODE_S]) {
-	// 	dir.y -= 1;
-	// }
-	// dir = v3_normalized(dir);
-	// game->player.pos += dir * 0.5f;
 
 	SDL_Event event;
 	while(SDL_PollEvent(&event) != 0) {
@@ -600,7 +596,7 @@ func void render(float interp_dt, float delta)
 	s_v3 sun_pos = v3(0, -10, 10);
 	s_v3 sun_dir = v3_normalized(v3(1, 1, -1));
 	s_m4 light_view = look_at(sun_pos, sun_pos + sun_dir, v3(0, 0, 1));
-	s_m4 ortho = make_orthographic(0, (float)g_platform_data->window_size.x, (float)g_platform_data->window_size.y, 0, -1, 1);
+	s_m4 ortho = make_orthographic(0, c_world_size.x, c_world_size.y, 0, -1, 1);
 	s_m4 perspective = make_perspective(60.0f, c_world_size.x / c_world_size.y, 0.01f, 100.0f);
 
 	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);

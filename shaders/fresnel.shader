@@ -18,12 +18,12 @@ shared_var vec2 v_uv;
 void main()
 {
 	vec3 vertex = vertex_pos;
-	gl_Position = projection * view * instance_model * vec4(vertex, 1);
+	gl_Position = projection * view * instance_model * vec4(vertex, 1.0);
 	v_color = vertex_color * instance_color;
 	v_normal = vertex_normal;
-	v_light_frag_pos = light_projection * light_view * instance_model * vec4(vertex, 1);
+	v_light_frag_pos = light_projection * light_view * instance_model * vec4(vertex, 1.0);
 	v_uv = vertex_uv;
-	v_frag_pos = (instance_model * vec4(vertex_pos, 1)).xyz;
+	v_frag_pos = (instance_model * vec4(vertex_pos, 1.0)).xyz;
 }
 #endif
 
@@ -50,7 +50,7 @@ void main()
 		n2 = smoothstep(-step, 0.0, n);
 	}
 	// color.r += n2;
-	vec3 fresnel_color = v_color.rgb * 2;
+	vec3 fresnel_color = v_color.rgb * 2.0;
 	color = mix(v_color.rgb * 0.5, fresnel_color, n2);
 
 	out_color = vec4(color, 1.0);
