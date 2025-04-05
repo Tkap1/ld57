@@ -96,6 +96,7 @@ m_gl_funcs
 #undef X
 
 #define invalid_default_case default: { assert(!"Invalid default case"); }
+#define invalid_else else { assert(!"Invalid else"); }
 
 enum e_mesh
 {
@@ -108,12 +109,15 @@ enum e_mesh
 enum e_shader
 {
 	e_shader_mesh,
+	e_shader_depth_only,
+	e_shader_flat,
 	e_shader_count,
 };
 
 enum e_texture
 {
 	e_texture_white,
+	e_texture_shadow_map,
 	e_texture_count
 };
 
@@ -143,6 +147,14 @@ enum e_blend_mode
 	e_blend_mode_multiply_inv,
 	e_blend_mode_normal,
 	e_blend_mode_additive_no_alpha,
+};
+
+enum e_view_state
+{
+	e_view_state_default,
+	e_view_state_shadow_map,
+	e_view_state_curr_depth,
+	e_view_state_count,
 };
 
 #pragma pack(push, 1)
@@ -180,13 +192,22 @@ struct s_instance_data
 };
 #pragma pack(pop)
 
+struct s_fbo
+{
+	s_v2i size;
+	u32 id;
+};
+
 struct s_render_flush_data
 {
 	s_m4 view;
 	s_m4 projection;
+	s_m4 light_view;
+	s_m4 light_projection;
 	e_blend_mode blend_mode;
 	e_depth_mode depth_mode;
 	e_cull_mode cull_mode;
+	s_fbo fbo;
 };
 
 struct s_render_group
@@ -228,6 +249,9 @@ struct s_game
 	f64 time_before;
 	s_v3 player_pos;
 	s_quaternion player_rot;
+	s_fbo shadow_map_fbo;
+	u32 curr_fbo;
+	e_view_state view_state;
 
 	int render_instance_count[e_shader_count][e_texture_count][e_mesh_count];
 	int render_instance_max_elements[e_shader_count][e_texture_count][e_mesh_count];

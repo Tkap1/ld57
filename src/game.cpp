@@ -124,8 +124,8 @@ void init(s_platform_data* platform_data)
 	{
 		constexpr float c_size = 0.5f;
 		s_vertex vertex_arr[] = {
-			{v3(-c_size, -c_size, 0), v3(0, -1, 0), make_color(1,0,0), v2(0, 1)},
-			{v3(c_size, -c_size, 0), v3(0, -1, 0), make_color(0,1,0), v2(1, 0)},
+			{v3(-c_size, -c_size, 0), v3(0, -1, 0), make_color(1), v2(0, 1)},
+			{v3(c_size, -c_size, 0), v3(0, -1, 0), make_color(1), v2(1, 1)},
 			{v3(c_size, c_size, 0), v3(0, -1, 0), make_color(1), v2(1, 0)},
 			{v3(-c_size, -c_size, 0), v3(0, -1, 0), make_color(1), v2(0, 1)},
 			{v3(c_size, c_size, 0), v3(0, -1, 0), make_color(1), v2(1, 0)},
@@ -139,7 +139,32 @@ void init(s_platform_data* platform_data)
 		game->mesh_arr[e_mesh_monkey] = make_mesh_from_ply_file("assets/monkey.ply", &game->render_frame_arena);
 	}
 
+	{
+		game->shadow_map_fbo.size.x = c_shadow_map_res;
+		game->shadow_map_fbo.size.y = c_shadow_map_res;
+		gl(glGenFramebuffers(1, &game->shadow_map_fbo.id));
+		gl(glGenTextures(1, &game->texture_arr[e_texture_shadow_map].id));
+		gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[e_texture_shadow_map].id));
+		gl(glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, c_shadow_map_res, c_shadow_map_res, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, null));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+
+		bind_framebuffer(game->shadow_map_fbo.id);
+		gl(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, game->texture_arr[e_texture_shadow_map].id, 0));
+		// gl(glDrawBuffer(GL_NONE));
+		gl(glReadBuffer(GL_NONE));
+		if(glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+			assert(false);
+		}
+
+		bind_framebuffer(0);
+	}
+
 	game->shader_arr[e_shader_mesh] = load_shader_from_file("shaders/mesh.shader", &game->render_frame_arena);
+	game->shader_arr[e_shader_depth_only] = load_shader_from_file("shaders/depth_only.shader", &game->render_frame_arena);
+	game->shader_arr[e_shader_flat] = load_shader_from_file("shaders/flat.shader", &game->render_frame_arena);
 
 }
 
@@ -218,7 +243,7 @@ func void input()
 		dir.y -= 1;
 	}
 	dir = v3_normalized(dir);
-	game->player_pos += dir * 0.1f;
+	game->player_pos += dir * 0.5f;
 	if(v3_length(dir) > 0) {
 		game->player_rot = dir_to_quaternion(dir);
 	}
@@ -242,6 +267,14 @@ func void input()
 
 			case SDL_KEYDOWN:
 			case SDL_KEYUP: {
+				if(event.type == SDL_KEYDOWN) {
+					if(event.key.keysym.sym == SDLK_h) {
+						game->view_state = (e_view_state)circular_index(game->view_state + 1, e_view_state_count);
+					}
+					else if(event.key.keysym.sym == SDLK_g) {
+						game->view_state = (e_view_state)circular_index(game->view_state - 1, e_view_state_count);
+					}
+				}
 				// int key = sdl_key_to_windows_key(event.key.keysym.sym);
 				// if(key == -1) { break; }
 				// b8 is_repeat = event.key.repeat ? true : false;
@@ -296,39 +329,91 @@ func void render(float interp_dt, float delta)
 	game->render_group_arr.count = 0;
 	memset(game->render_instance_count, 0, sizeof(game->render_instance_count));
 
+	s_m4 light_projection = make_orthographic(-50, 50, -50, 50, -50, 50);
+	s_v3 sun_pos = v3(0, -10, 10);
+	s_v3 sun_dir = v3_normalized(v3(1, 1, -1));
+	s_m4 light_view = look_at(sun_pos, sun_pos + sun_dir, v3(0, 0, 1));
 	s_m4 ortho = make_orthographic(0, (float)g_platform_data->window_size.x, (float)g_platform_data->window_size.y, 0, -1, 1);
 	s_m4 perspective = make_perspective(60.0f, c_world_size.x / c_world_size.y, 0.01f, 100.0f);
 
 	s_v3 cam_pos = v3(
 		game->player_pos.x,
-		game->player_pos.y - 10,
-		10.0f
+		game->player_pos.y - 20,
+		20.0f
 	);
 	s_m4 view = look_at(cam_pos, game->player_pos, c_up_axis);
 
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render into depth start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		s_m4 model = m4_translate(game->player_pos);
-		model = m4_multiply(model, quaternion_to_m4(game->player_rot));
-		draw_mesh(e_mesh_monkey, model, make_color(1));
+		draw_game(e_shader_depth_only);
+		s_render_flush_data data = make_render_flush_data();
+		data.projection = light_projection;
+		data.view = light_view;
+		data.fbo = game->shadow_map_fbo;
+		clear_framebuffer_depth(game->shadow_map_fbo.id);
+		render_flush(data, true);
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render into depth end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+	if(game->view_state == e_view_state_shadow_map) {
+		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map);
+		s_render_flush_data data = make_render_flush_data();
+		data.projection = ortho;
+		clear_framebuffer_depth(0);
+		clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+		render_flush(data, true);
 	}
 
-	s_rng rng = make_rng(0);
-	for(int y = 0; y < 100; y += 1) {
-		for(int x = 0; x < 100; x += 1) {
-			s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
-			model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-			draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
-		}
+	else if(game->view_state == e_view_state_curr_depth) {
+		draw_game(e_shader_mesh);
+		s_render_flush_data data = make_render_flush_data();
+		data.projection = light_projection;
+		data.view = light_view;
+		data.light_projection = light_projection;
+		data.light_view = light_view;
+		clear_framebuffer_depth(0);
+		clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+		render_flush(data, true);
 	}
-	for(int y = 0; y < 100; y += 1) {
-		for(int x = 0; x < 100; x += 1) {
-			if(chance100(&rng, 10)) {
-				s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
-				model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
-				draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
-			}
+	else {
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		{
+			draw_game(e_shader_mesh);
+			s_render_flush_data data = make_render_flush_data();
+			data.projection = perspective;
+			data.view = view;
+			data.light_projection = light_projection;
+			data.light_view = light_view;
+			clear_framebuffer_depth(0);
+			clear_framebuffer_color(0, v4(0.1f, 0, 0, 0));
+			render_flush(data, true);
 		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	}
+
+	// {
+	// 	s_m4 model = m4_translate(game->player_pos);
+	// 	model = m4_multiply(model, quaternion_to_m4(game->player_rot));
+	// 	draw_mesh(e_mesh_monkey, model, make_color(1));
+	// }
+
+	// s_rng rng = make_rng(0);
+	// for(int y = 0; y < 100; y += 1) {
+	// 	for(int x = 0; x < 100; x += 1) {
+	// 		s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
+	// 		model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+	// 		draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
+	// 	}
+	// }
+	// for(int y = 0; y < 100; y += 1) {
+	// 	for(int x = 0; x < 100; x += 1) {
+	// 		if(chance100(&rng, 10)) {
+	// 			s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
+	// 			model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+	// 			draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f));
+	// 		}
+	// 	}
+	// }
 
 	{
 		s_render_flush_data data = make_render_flush_data();
@@ -398,29 +483,63 @@ func void draw_rect(s_v2 pos, s_v2 size, s_v4 color)
 	add_to_render_group(data, e_shader_mesh, e_texture_white, e_mesh_quad);
 }
 
-func void draw_mesh(e_mesh mesh_id, s_m4 model, s_v4 color)
+func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id)
+{
+	s_instance_data data = zero;
+	data.model = m4_translate(v3(pos, 0));
+	data.model = m4_multiply(data.model, m4_scale(v3(size, 1)));
+	data.color = color;
+
+	add_to_render_group(data, e_shader_flat, texture_id, e_mesh_quad);
+}
+
+func void draw_mesh(e_mesh mesh_id, s_m4 model, s_v4 color, e_shader shader_id)
 {
 	s_instance_data data = zero;
 	data.model = model;
 	data.color = color;
-	add_to_render_group(data, e_shader_mesh, e_texture_white, mesh_id);
+	add_to_render_group(data, shader_id, e_texture_white, mesh_id);
 }
 
-func void draw_mesh(e_mesh mesh_id, s_v3 pos, s_v3 size, s_v4 color)
+func void draw_mesh(e_mesh mesh_id, s_v3 pos, s_v3 size, s_v4 color, e_shader shader_id)
 {
 	s_m4 model = m4_translate(pos);
 	model = m4_multiply(model, m4_scale(size));
-	draw_mesh(mesh_id, model, color);
+	draw_mesh(mesh_id, model, color, shader_id);
+}
+
+func void bind_framebuffer(u32 fbo)
+{
+	if(game->curr_fbo != fbo) {
+		gl(glBindFramebuffer(GL_FRAMEBUFFER, fbo));
+		game->curr_fbo = fbo;
+	}
+}
+
+func void clear_framebuffer_color(u32 fbo, s_v4 color)
+{
+	bind_framebuffer(fbo);
+	glClearColor(color.x, color.y, color.z, color.w);
+	glClear(GL_COLOR_BUFFER_BIT);
+}
+
+func void clear_framebuffer_depth(u32 fbo)
+{
+	bind_framebuffer(fbo);
+	set_depth_mode(e_depth_mode_read_and_write);
+	glClear(GL_DEPTH_BUFFER_BIT);
 }
 
 func void render_flush(s_render_flush_data data, b8 reset_render_count)
 {
+	bind_framebuffer(data.fbo.id);
 
-	{
+	if(data.fbo.id == 0) {
 		s_rect letterbox = do_letterbox(v2(g_platform_data->window_size), c_world_size);
 		glViewport((int)letterbox.x, (int)letterbox.y, (int)letterbox.w, (int)letterbox.h);
-		glClearColor(0.1f, 0, 0, 0);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	}
+	else {
+		glViewport(0, 0, data.fbo.size.x, data.fbo.size.y);
 	}
 
 	set_cull_mode(data.cull_mode);
@@ -432,6 +551,8 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		s_uniform_data uniform_data = zero;
 		uniform_data.view = data.view;
 		uniform_data.projection = data.projection;
+		uniform_data.light_view = data.light_view;
+		uniform_data.light_projection = data.light_projection;
 		uniform_data.render_time = game->render_time;
 		// data.view = render_pass_data.view;
 		// data.projection = render_pass_data.projection;
@@ -446,16 +567,34 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 
 	foreach_val(group_i, group, game->render_group_arr) {
 		s_mesh* mesh = &game->mesh_arr[group.mesh_id];
-		int instance_count = game->render_instance_count[group.shader_id][group.texture_id][group.mesh_id];
-		assert(instance_count > 0);
+		int* instance_count = &game->render_instance_count[group.shader_id][group.texture_id][group.mesh_id];
+		assert(*instance_count > 0);
 		s_instance_data* instance_data = game->render_instance_arr[group.shader_id][group.texture_id][group.mesh_id];
+
 		gl(glUseProgram(game->shader_arr[group.shader_id].id));
-		gl(glActiveTexture(GL_TEXTURE0));
-		gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[group.texture_id].id));
+
+		int in_texture_loc = glGetUniformLocation(game->shader_arr[group.shader_id].id, "in_texture");
+		int shadow_map_loc = glGetUniformLocation(game->shader_arr[group.shader_id].id, "shadow_map");
+		if(in_texture_loc >= 0) {
+			glUniform1i(in_texture_loc, 0);
+			gl(glActiveTexture(GL_TEXTURE0));
+			gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[group.texture_id].id));
+		}
+		if(shadow_map_loc >= 0) {
+			glUniform1i(shadow_map_loc, 1);
+			glActiveTexture(GL_TEXTURE1);
+			gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[e_texture_shadow_map].id));
+		}
+
 		gl(glBindVertexArray(mesh->vao));
 		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo));
-		gl(glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(s_instance_data) * instance_count, instance_data));
-		gl(glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertex_count, instance_count));
+		gl(glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(s_instance_data) * *instance_count, instance_data));
+		gl(glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertex_count, *instance_count));
+		if(reset_render_count) {
+			game->render_group_arr.remove_and_swap(group_i);
+			group_i -= 1;
+			*instance_count = 0;
+		}
 	}
 }
 
@@ -628,6 +767,8 @@ func s_render_flush_data make_render_flush_data()
 	s_render_flush_data result = zero;
 	result.view = m4_identity();
 	result.projection = m4_identity();
+	result.light_view = m4_identity();
+	result.light_projection = m4_identity();
 	result.cull_mode = e_cull_mode_disabled;
 	result.blend_mode = e_blend_mode_normal;
 	result.depth_mode = e_depth_mode_read_and_write;
@@ -875,4 +1016,46 @@ func void set_blend_mode(e_blend_mode mode)
 		} break;
 		invalid_default_case;
 	}
+}
+
+func void draw_game(e_shader shader_id)
+{
+	{
+		s_m4 model = m4_translate(game->player_pos);
+		model = m4_multiply(model, quaternion_to_m4(game->player_rot));
+		model = m4_multiply(model, m4_scale(v3(5)));
+		draw_mesh(e_mesh_monkey, model, make_color(1), shader_id);
+	}
+
+	{
+		s_rng rng = make_rng(0);
+		for(int y = 0; y < 100; y += 1) {
+			for(int x = 0; x < 100; x += 1) {
+				s_m4 model = m4_translate(v3(x - 50, y - 50, 0.0f));
+				model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+				draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
+			}
+		}
+		for(int y = 0; y < 100; y += 1) {
+			for(int x = 0; x < 100; x += 1) {
+				if(chance100(&rng, 10)) {
+					s_m4 model = m4_translate(v3(x - 50, y - 50, 5));
+					model = m4_multiply(model, m4_scale(v3(0.5f, 0.5f, 0.5f)));
+					draw_mesh(e_mesh_cube, model, make_color((x+y)&1?0.5f:1.0f), shader_id);
+				}
+			}
+		}
+	}
+}
+
+template <typename t>
+func void toggle(t* out, t a, t b)
+{
+	if(*out == a) {
+		*out = b;
+	}
+	else if(*out == b) {
+		*out = a;
+	}
+	invalid_else;
 }

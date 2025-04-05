@@ -15,6 +15,8 @@ layout(std140) uniform ublock
 {
 	s_m4 view;
 	s_m4 projection;
+	s_m4 light_view;
+	s_m4 light_projection;
 	s_v2 base_res;
 	s_v2 window_size;
 	float render_time;

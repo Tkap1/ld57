@@ -168,6 +168,17 @@ static constexpr s_v3 v3(t0 x)
 	return result;
 }
 
+template <typename t0, typename t1, typename t2, typename t3>
+static constexpr s_v4 v4(t0 x, t1 y, t2 z, t3 w)
+{
+	s_v4 result = zero;
+	result.x = (float)x;
+	result.y = (float)y;
+	result.z = (float)z;
+	result.w = (float)w;
+	return result;
+}
+
 template <typename t0>
 static constexpr s_v4 v4(s_v3 v, t0 w)
 {
@@ -606,4 +617,14 @@ func void swap(t* a, t* b)
 	t c = *a;
 	*a = *b;
 	*b = c;
+}
+
+[[nodiscard]]
+static int circular_index(int index, int size)
+{
+	assert(size > 0);
+	if(index >= 0) {
+		return index % size;
+	}
+	return (size - 1) - ((-index - 1) % size);
 }
