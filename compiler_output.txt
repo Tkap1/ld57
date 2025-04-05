@@ -1,5 +1,4 @@
 platform.cpp
 game.cpp
-C:\Users\34687\Desktop\Dev\C\ld57\src\game.cpp(240): warning C4189: 'key_state': local variable is initialized but not referenced
 Generating Code...
    Creating library main.lib and object main.exp

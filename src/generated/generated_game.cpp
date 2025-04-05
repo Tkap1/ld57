@@ -6,7 +6,7 @@ func f64 get_seconds();
 func void on_gl_error(const char* expr, char* file, int line, int error);
 func void on_failed_assert(char* condition, char* file, int line);
 func void draw_rect(s_v2 pos, s_v2 size, s_v4 color);
-func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id);
+func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id);
 func void draw_mesh(e_mesh mesh_id, s_m4 model, s_v4 color, e_shader shader_id);
 func void draw_mesh(e_mesh mesh_id, s_v3 pos, s_v3 size, s_v4 color, e_shader shader_id);
 func void bind_framebuffer(u32 fbo);
@@ -32,3 +32,9 @@ func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos);
 func Mix_Chunk* load_sound_from_file(char* path);
 func void play_sound(e_sound sound_id);
 func void set_player_state(e_player_state state);
+func void try_to_dash();
+func s_texture load_texture_from_file(char* path);
+template <typename t>
+func s_maybe<t> maybe();
+template <typename t>
+func s_maybe<t> maybe(t value);

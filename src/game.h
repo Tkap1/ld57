@@ -113,6 +113,7 @@ enum e_shader
 	e_shader_depth_only,
 	e_shader_flat,
 	e_shader_fresnel,
+	e_shader_post,
 	e_shader_count,
 };
 
@@ -121,13 +122,21 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/depth_only.shader",
 	"shaders/flat.shader",
 	"shaders/fresnel.shader",
+	"shaders/post.shader",
 };
 
 enum e_texture
 {
 	e_texture_white,
 	e_texture_shadow_map,
+	e_texture_noise,
 	e_texture_count
+};
+
+global constexpr char* c_texture_path_arr[e_texture_count] = {
+	"",
+	"",
+	"assets/noise.png",
 };
 
 enum e_game_state
@@ -140,12 +149,14 @@ enum e_sound
 {
 	e_sound_pop,
 	e_sound_defeat,
+	e_sound_clap,
 	e_sound_count,
 };
 
 global constexpr char* c_sound_path_arr[e_sound_count] = {
 	"assets/pop.wav",
-	"assets/defeat.wav"
+	"assets/defeat.wav",
+	"assets/clap.wav",
 };
 
 enum e_depth_mode
@@ -292,12 +303,18 @@ enum e_player_state
 	e_player_state_post_dash,
 };
 
+template <typename t>
+struct s_maybe
+{
+	b8 valid;
+	t value;
+};
+
 struct s_player
 {
 	e_player_state state;
-	int dash_target;
+	s_maybe<int> dash_target;
 	s_v3 pos;
-	s_v3 last_dir;
 	s_v3 vel;
 	s_v3 prev_pos;
 	s_v3 wanted_pos;
@@ -320,6 +337,23 @@ struct s_projectile
 	s_v3 pos;
 };
 
+struct s_soft_game_data
+{
+	s_player player;
+	s_list<s_speed_boost, 1024> speed_boost_arr;
+	s_list<s_projectile, 1024> projectile_arr;
+	e_game_state state;
+	float want_dash_timestamp;
+	int hovered_boost;
+	float defeat_timestamp;
+};
+
+struct s_hard_game_data
+{
+	float highest_z;
+	s_soft_game_data soft_data;
+};
+
 struct s_game
 {
 	s_linear_arena update_frame_arena;
@@ -335,18 +369,14 @@ struct s_game
 	s_fbo shadow_map_fbo;
 	u32 curr_fbo;
 	e_view_state view_state;
-	b8 dont_reset_game;
 	s_down_input down_input;
-	float want_dash_timestamp;
-	int hovered_boost;
-	s_player player;
-	e_game_state state;
 	Mix_Chunk* sound_arr[e_sound_count];
 	int speed_index;
-	float defeat_timestamp;
 
-	s_list<s_speed_boost, 1024> speed_boost_arr;
-	s_list<s_projectile, 1024> projectile_arr;
+	b8 do_soft_reset;
+	b8 do_hard_reset;
+
+	s_hard_game_data hard_data;
 
 	int render_instance_count[e_shader_count][e_texture_count][e_mesh_count];
 	int render_instance_max_elements[e_shader_count][e_texture_count][e_mesh_count];

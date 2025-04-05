@@ -31,6 +31,17 @@
 #include "external/glcorearb.h"
 #endif
 
+#pragma warning(push, 0)
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ASSERT
+#include "external/stb_image.h"
+
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STBTT_assert
+#include "external/stb_truetype.h"
+#pragma warning(pop)
+
+
 #include "tk_types.h"
 
 #if defined(m_debug)
@@ -67,6 +78,7 @@ void init(s_platform_data* platform_data)
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
 	game->speed_index = 5;
+	game->do_hard_reset = true;
 
 	{
 		u8* memory = platform_data->memory + sizeof(s_game);
@@ -168,6 +180,13 @@ void init(s_platform_data* platform_data)
 	for(int i = 0; i < e_sound_count; i += 1) {
 		game->sound_arr[i] = load_sound_from_file(c_sound_path_arr[i]);
 	}
+
+	for(int i = 0; i < e_texture_count; i += 1) {
+		char* path = c_texture_path_arr[i];
+		if(strlen(path) > 0) {
+			game->texture_arr[i] = load_texture_from_file(path);
+		}
+	}
 }
 
 void init_after_recompile(s_platform_data* platform_data)
@@ -237,7 +256,7 @@ func void input()
 	}
 
 	s_v3 dir = zero;
-	u8* key_state = (u8*)SDL_GetKeyboardState(null);
+	// u8* key_state = (u8*)SDL_GetKeyboardState(null);
 	// if(key_state[SDL_SCANCODE_A]) {
 	// 	dir.x -= 1;
 	// }
@@ -280,10 +299,10 @@ func void input()
 						game->view_state = (e_view_state)circular_index(game->view_state - 1, e_view_state_count);
 					}
 					else if(event.key.keysym.sym == SDLK_f && event.key.repeat == 0) {
-						game->want_dash_timestamp = game->update_time;
+						game->hard_data.soft_data.want_dash_timestamp = game->update_time;
 					}
 					else if(event.key.keysym.sym == SDLK_r && event.key.repeat == 0) {
-						game->dont_reset_game = false;
+						game->do_hard_reset = true;
 					}
 					#if defined(m_debug)
 					else if(event.key.keysym.sym == SDLK_KP_PLUS) {
@@ -334,15 +353,26 @@ func void input()
 func void update()
 {
 	game->update_frame_arena.used = 0;
-	game->player.prev_pos = game->player.pos;
 
-	if(!game->dont_reset_game) {
-		game->player = zero;
-		game->state = e_game_state_default;
-		game->dont_reset_game = true;
-		game->speed_boost_arr.count = 0;
-		game->projectile_arr.count = 0;
-		game->player.dash_target = -1;
+	s_hard_game_data* hard_data = &game->hard_data;
+	s_soft_game_data* soft_data = &hard_data->soft_data;
+	s_player* player = &soft_data->player;
+
+	player->prev_pos = player->pos;
+
+	if(game->do_hard_reset) {
+		game->do_hard_reset = false;
+		game->do_soft_reset = true;
+		memset(hard_data, 0, sizeof(s_hard_game_data));
+	}
+	if(game->do_soft_reset) {
+		game->do_soft_reset = false;
+		memset(soft_data, 0, sizeof(s_soft_game_data));
+
+		{
+			float checkpoint = floorf(hard_data->highest_z / 100);
+			player->pos.z = -checkpoint;
+		}
 
 		s_rng rng = make_rng(0);
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -357,7 +387,7 @@ func void update()
 							-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
 						);
 						z += 10;
-						game->speed_boost_arr.add(boost);
+						soft_data->speed_boost_arr.add(boost);
 					}
 				}
 				z += 20;
@@ -378,7 +408,7 @@ func void update()
 					proj.prev_pos = proj.pos;
 					proj.radius = randf_range(&rng, 0.5f, 1.5f);
 					proj.going_right = rand_bool(&rng);
-					game->projectile_arr.add(proj);
+					soft_data->projectile_arr.add(proj);
 					z += c_default_proj_z_step;
 				}
 				z += c_default_proj_z_step * 2;
@@ -397,7 +427,7 @@ func void update()
 					proj.prev_pos = proj.pos;
 					proj.radius = randf_range(&rng, 0.5f, 1.5f);
 					proj.going_right = rand_bool(&rng);
-					game->projectile_arr.add(proj);
+					soft_data->projectile_arr.add(proj);
 					z += c_bounce_proj_z_step;
 				}
 				z += c_bounce_proj_z_step * 2;
@@ -406,109 +436,118 @@ func void update()
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	}
 
-	b8 handle_input = game->state == e_game_state_default;
-	b8 can_dash = false;
-	b8 update_entities = game->state != e_game_state_defeat;
-	if(handle_input) {
-		can_dash = true;
-		if(game->player.state == e_player_state_dashing) {
-			s_speed_boost* boost = &game->speed_boost_arr[game->player.dash_target];
-			if(v3_distance(game->player.pos, boost->pos) >= 0.01f) {
-				can_dash = false;
-			}
-		}
-	}
-
+	b8 want_to_dash = false;
 	{
-		float passed = game->update_time - game->want_dash_timestamp;
-		if(
-			game->hovered_boost >= 0 && passed <= 0.1f && game->want_dash_timestamp > 0 &&
-			game->hovered_boost != game->player.dash_target && can_dash
-		) {
-			game->want_dash_timestamp = 0;
-			set_player_state(e_player_state_dashing);
-			game->player.dash_target = game->hovered_boost;
+		float passed = game->update_time - soft_data->want_dash_timestamp;
+		if(passed <= 0.1f && soft_data->want_dash_timestamp > 0) {
+			want_to_dash = true;
 		}
 	}
+	b8 handle_input = soft_data->state == e_game_state_default;
+	b8 update_entities = soft_data->state != e_game_state_defeat;
 
-	if(game->state == e_game_state_defeat) {
-		float passed = game->update_time - game->defeat_timestamp;
+	if(handle_input && want_to_dash) {
+		try_to_dash();
+	}
+
+	if(soft_data->state == e_game_state_defeat) {
+		float passed = game->update_time - soft_data->defeat_timestamp;
 		if(passed >= 0.5f) {
-			game->dont_reset_game = false;
+			game->do_soft_reset = true;
 		}
 	}
+	b8 do_move = handle_input;
 
-	switch(game->player.state) {
+	switch(player->state) {
 		case e_player_state_default: {
 			if(handle_input) {
-				if(v3_length(game->player.vel) > 0.001f) {
-					game->player.pos += game->player.vel;
-					game->player.last_dir = game->player.vel;
-					game->player.vel *= 0.9f;
+				s_v3 temp0 = player->wanted_pos;
+				s_v3 temp1 = player->pos;
+				temp0.z = 0;
+				temp1.z = 0;
+				s_v3 v = temp0 - temp1;
+				float dist = v3_length(v);
+				float speed = smoothstep(0.0f, 5.0f, dist);
+				v = v3_set_mag(v, min(dist, speed));
+				constexpr float z_speed = 0.1f;
+				player->z_speed.target = z_speed;
+				if(game->down_input.speed_boost) {
+					player->z_speed.target = z_speed * 3;
 				}
-				else {
-					s_v3 temp0 = game->player.wanted_pos;
-					s_v3 temp1 = game->player.pos;
-					temp0.z = 0;
-					temp1.z = 0;
-					s_v3 v = temp0 - temp1;
-					float dist = v3_length(v);
-					float speed = smoothstep(0.0f, 5.0f, dist) * 0.3f;
-					v = v3_set_mag(v, min(dist, speed));
-					constexpr float z_speed = 0.1f;
-					game->player.z_speed.target = z_speed;
-					if(game->down_input.speed_boost) {
-						game->player.z_speed.target = z_speed * 3;
-					}
-					game->player.z_speed.curr = go_towards(game->player.z_speed.curr, game->player.z_speed.target, 0.01f);
-					v.z = -game->player.z_speed.curr;
-					game->player.pos += v;
-					game->player.last_dir = v;
-				}
-				at_least_ptr(&game->player.pos.x, -c_wall_x + 2);
-				at_most_ptr(&game->player.pos.x, c_wall_x - 2);
+				player->z_speed.curr = go_towards(player->z_speed.curr, player->z_speed.target, 0.01f);
+				v.z = -player->z_speed.curr;
+				v.x *= 0.035f;
+				v.z *= 0.1f;
+				player->vel += v;
 			}
 		} break;
 
 		case e_player_state_dashing: {
-			assert(game->player.dash_target >= 0);
-			s_speed_boost* boost = &game->speed_boost_arr[game->player.dash_target];
-			game->player.pos = go_towards(game->player.pos, boost->pos, 1.0f);
-			game->player.last_dir = v3_normalized(boost->pos - game->player.pos);
-			if(v3_distance(game->player.pos, boost->pos) < 0.01f) {
-				game->speed_boost_arr.remove_and_swap(game->player.dash_target);
+			do_move = false;
+			assert(soft_data->player.dash_target.valid);
+			s_speed_boost* boost = &soft_data->speed_boost_arr[player->dash_target.value];
+			s_v3 dir = v3_normalized(boost->pos - player->pos);
+			player->vel = dir;
+			player->pos = go_towards(player->pos, boost->pos, 1.0f);
+			if(v3_distance(player->pos, boost->pos) < 0.01f) {
+				soft_data->speed_boost_arr.remove_and_swap(soft_data->player.dash_target.value);
 				set_player_state(e_player_state_post_dash);
-				game->player.dash_target = -1;
-				game->player.post_dash_timestamp = game->update_time;
+				player->dash_target = maybe<int>();
+				player->post_dash_timestamp = game->update_time;
+				player->vel = zero;
 				play_sound(e_sound_pop);
 			}
 		} break;
 
 		case e_player_state_post_dash: {
-			float passed = game->update_time - game->player.post_dash_timestamp;
+			float passed = game->update_time - player->post_dash_timestamp;
 			if(passed >= 0.5f) {
 				set_player_state(e_player_state_default);
 			}
 		} break;
 	}
 
-	if(game->state == e_game_state_default) {
-		foreach_val(proj_i, proj, game->projectile_arr) {
-			if(sphere_vs_sphere(game->player.pos, c_player_radius, proj.pos, proj.radius)) {
+	if(do_move) {
+		player->pos += player->vel;
+		player->vel *= 0.9f;
+
+		if(player->pos.x < -c_wall_x + 2) {
+			player->vel.x *= -0.8f;
+			player->pos.x = -c_wall_x + 2;
+		}
+		if(player->pos.x > c_wall_x - 2) {
+			player->vel.x *= -0.8f;
+			player->pos.x = c_wall_x - 2;
+		}
+	}
+
+	{
+		float curr_checkpoint = floorf(game->hard_data.highest_z / 100);
+		float next_checkpoint = curr_checkpoint + 100;
+		game->hard_data.highest_z = fabsf(player->pos.z);
+		if(player->pos.z >= next_checkpoint) {
+			// @TODO(tkap, 05/04/2025): better sound
+			play_sound(e_sound_pop);
+		}
+	}
+
+	if(soft_data->state == e_game_state_default) {
+		foreach_val(proj_i, proj, soft_data->projectile_arr) {
+			if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, proj.radius)) {
 				if(proj.type == e_projectile_type_default) {
-					game->state = e_game_state_defeat;
-					game->defeat_timestamp = game->update_time;
+					soft_data->state = e_game_state_defeat;
+					soft_data->defeat_timestamp = game->update_time;
 					play_sound(e_sound_defeat);
 					break;
 				}
 				else if(proj.type == e_projectile_type_bounce) {
-					game->player.vel = game->player.last_dir * -5;
-					game->projectile_arr.remove_and_swap(proj_i);
-					if(game->player.state == e_player_state_dashing || game->player.state == e_player_state_post_dash) {
+					player->vel = player->vel * -5;
+					soft_data->projectile_arr.remove_and_swap(proj_i);
+					if(player->state == e_player_state_dashing || player->state == e_player_state_post_dash) {
 						set_player_state(e_player_state_default);
 					}
 					proj_i -= 1;
-					play_sound(e_sound_pop);
+					play_sound(e_sound_clap);
 				}
 			}
 		}
@@ -516,7 +555,7 @@ func void update()
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		update projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		foreach_ptr(proj_i, proj, game->projectile_arr) {
+		foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
 			proj->prev_pos = proj->pos;
 			if(update_entities) {
 				if(proj->going_right) {
@@ -543,6 +582,10 @@ func void render(float interp_dt, float delta)
 {
 	game->render_frame_arena.used = 0;
 
+	s_hard_game_data* hard_data = &game->hard_data;
+	s_soft_game_data* soft_data = &hard_data->soft_data;
+	s_player* player = &soft_data->player;
+
 	for(int i = 0; i < e_shader_count; i += 1) {
 		for(int j = 0; j < e_texture_count; j += 1) {
 			for(int k = 0; k < e_mesh_count; k += 1) {
@@ -560,7 +603,7 @@ func void render(float interp_dt, float delta)
 	s_m4 ortho = make_orthographic(0, (float)g_platform_data->window_size.x, (float)g_platform_data->window_size.y, 0, -1, 1);
 	s_m4 perspective = make_perspective(60.0f, c_world_size.x / c_world_size.y, 0.01f, 100.0f);
 
-	s_v3 player_pos = lerp_v3(game->player.prev_pos, game->player.pos, interp_dt);
+	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
 
 	s_v3 cam_pos = v3(
 		0, -20, player_pos.z - 5
@@ -573,9 +616,9 @@ func void render(float interp_dt, float delta)
 
 	{
 		s_v3 p = ray_at_y(ray, 0.0f);
-		game->player.wanted_pos = p;
+		player->wanted_pos = p;
 		// p.z = 0;
-		// s_v3 temp = game->player.pos;
+		// s_v3 temp = player->pos;
 		// temp.z = 0;
 		// game->player_dir = v3_normalized(p - temp);
 		// float z_speed = range_lerp(g_mouse.y / c_world_size.y, 0, 1, 0.1f, 2.0f);
@@ -595,7 +638,7 @@ func void render(float interp_dt, float delta)
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render into depth end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 	if(game->view_state == e_view_state_shadow_map) {
-		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map);
+		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map, e_shader_flat);
 		s_render_flush_data data = make_render_flush_data(cam_pos);
 		data.projection = ortho;
 		clear_framebuffer_depth(0);
@@ -628,6 +671,16 @@ func void render(float interp_dt, float delta)
 			render_flush(data, true);
 		}
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		{
+			draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post);
+			s_render_flush_data data = make_render_flush_data(cam_pos);
+			data.projection = ortho;
+			data.blend_mode = e_blend_mode_normal;
+			data.depth_mode = e_depth_mode_no_read_no_write;
+			render_flush(data, true);
+		}
+
 	}
 
 	SDL_GL_SwapWindow(g_platform_data->window);
@@ -691,14 +744,14 @@ func void draw_rect(s_v2 pos, s_v2 size, s_v4 color)
 	add_to_render_group(data, e_shader_mesh, e_texture_white, e_mesh_quad);
 }
 
-func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id)
+func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id)
 {
 	s_instance_data data = zero;
 	data.model = m4_translate(v3(pos, 0));
 	data.model = m4_multiply(data.model, m4_scale(v3(size, 1)));
 	data.color = color;
 
-	add_to_render_group(data, e_shader_flat, texture_id, e_mesh_quad);
+	add_to_render_group(data, shader_id, texture_id, e_mesh_quad);
 }
 
 func void draw_mesh(e_mesh mesh_id, s_m4 model, s_v4 color, e_shader shader_id)
@@ -784,15 +837,21 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 
 		int in_texture_loc = glGetUniformLocation(game->shader_arr[group.shader_id].id, "in_texture");
 		int shadow_map_loc = glGetUniformLocation(game->shader_arr[group.shader_id].id, "shadow_map");
+		int noise_loc = glGetUniformLocation(game->shader_arr[group.shader_id].id, "noise");
 		if(in_texture_loc >= 0) {
 			glUniform1i(in_texture_loc, 0);
-			gl(glActiveTexture(GL_TEXTURE0));
+			glActiveTexture(GL_TEXTURE0);
 			gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[group.texture_id].id));
 		}
 		if(shadow_map_loc >= 0) {
 			glUniform1i(shadow_map_loc, 1);
 			glActiveTexture(GL_TEXTURE1);
 			gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[e_texture_shadow_map].id));
+		}
+		if(noise_loc >= 0) {
+			glUniform1i(noise_loc, 2);
+			glActiveTexture(GL_TEXTURE2);
+			gl(glBindTexture(GL_TEXTURE_2D, game->texture_arr[e_texture_noise].id));
 		}
 
 		gl(glBindVertexArray(mesh->vao));
@@ -1233,8 +1292,13 @@ func void set_blend_mode(e_blend_mode mode)
 
 func void draw_game(s_ray ray, float interp_dt)
 {
+
+	s_hard_game_data* hard_data = &game->hard_data;
+	s_soft_game_data* soft_data = &hard_data->soft_data;
+	s_player* player = &soft_data->player;
+
 	s_v3 ray_p = ray_at_y(ray, 0.0f);
-	s_v3 player_pos = lerp_v3(game->player.prev_pos, game->player.pos, interp_dt);
+	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
 
 	for(int i = 0; i < 20; i += 1) {
 		int vertical_index = ceilfi((player_pos.z + 10) / 2);
@@ -1255,7 +1319,7 @@ func void draw_game(s_ray ray, float interp_dt)
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		foreach_val(proj_i, proj, game->projectile_arr) {
+		foreach_val(proj_i, proj, soft_data->projectile_arr) {
 			s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
 			s_m4 model = m4_translate(proj_pos);
 			scale_m4_by_radius(&model, proj.radius);
@@ -1268,14 +1332,14 @@ func void draw_game(s_ray ray, float interp_dt)
 	}
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-	game->hovered_boost = -1;
-	foreach_val(boost_i, boost, game->speed_boost_arr) {
+	soft_data->hovered_boost = -1;
+	foreach_val(boost_i, boost, soft_data->speed_boost_arr) {
 		s_m4 model = m4_translate(boost.pos);
 		scale_m4_by_radius(&model, c_boost_radius);
 		s_v4 color = make_color(0.1f, 1, 0.1f);
 		if(boost_is_hovered(ray_p, boost.pos)) {
 			color = make_color(0.5f, 1, 0.5f);
-			game->hovered_boost = boost_i;
+			soft_data->hovered_boost = boost_i;
 		}
 		draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
 	}
@@ -1288,7 +1352,7 @@ func void draw_game(s_ray ray, float interp_dt)
 
 
 	// {
-	// 	s_m4 model = m4_translate(game->player.pos);
+	// 	s_m4 model = m4_translate(player->pos);
 	// 	model = m4_multiply(model, quaternion_to_m4(game->player_rot));
 	// 	model = m4_multiply(model, m4_scale(v3(5)));
 	// 	draw_mesh(e_mesh_monkey, model, make_color(1), shader_id);
@@ -1330,7 +1394,7 @@ func void toggle(t* out, t a, t b)
 func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos)
 {
 	float dist = v3_distance(mouse_point, boost_pos);
-	b8 result = dist <= c_boost_radius * 2;
+	b8 result = dist <= c_boost_radius * 3;
 	return result;
 }
 
@@ -1350,7 +1414,76 @@ func void play_sound(e_sound sound_id)
 func void set_player_state(e_player_state state)
 {
 	if(state != e_player_state_dashing) {
-		game->player.dash_target = -1;
+		game->hard_data.soft_data.player.dash_target = maybe<int>();
 	}
-	game->player.state = state;
+	game->hard_data.soft_data.player.state = state;
+}
+
+func void try_to_dash()
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+	s_player* player = &soft_data->player;
+	switch(player->state) {
+		case e_player_state_default: {
+			if(soft_data->hovered_boost >= 0) {
+				set_player_state(e_player_state_dashing);
+				player->dash_target = maybe(soft_data->hovered_boost);
+				soft_data->want_dash_timestamp = 0;
+			}
+		} break;
+
+		case e_player_state_dashing: {
+
+		} break;
+
+		case e_player_state_post_dash: {
+			if(soft_data->hovered_boost >= 0 && soft_data->hovered_boost != player->dash_target.value) {
+				set_player_state(e_player_state_dashing);
+				player->dash_target = maybe(soft_data->hovered_boost);
+				soft_data->want_dash_timestamp = 0;
+			}
+			else {
+				s_v3 dir = v3_normalized(player->wanted_pos - player->pos);
+				player->vel += dir * 1.5f;
+				set_player_state(e_player_state_default);
+				soft_data->want_dash_timestamp = 0;
+			}
+		} break;
+	}
+}
+
+func s_texture load_texture_from_file(char* path)
+{
+	s_texture result = zero;
+
+	int width, height, num_channels;
+	void* data = stbi_load(path, &width, &height, &num_channels, 4);
+	assert(data);
+
+	gl(glGenTextures(1, &result.id));
+	gl(glBindTexture(GL_TEXTURE_2D, result.id));
+	gl(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
+	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
+	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
+	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+	gl(glGenerateMipmap(GL_TEXTURE_2D));
+
+	return result;
+}
+
+template <typename t>
+func s_maybe<t> maybe()
+{
+	s_maybe<t> result = zero;
+	return result;
+}
+
+template <typename t>
+func s_maybe<t> maybe(t value)
+{
+	s_maybe<t> result = zero;
+	result.valid = true;
+	result.value = value;
+	return result;
 }
