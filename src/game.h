@@ -114,6 +114,9 @@ enum e_shader
 	e_shader_flat,
 	e_shader_fresnel,
 	e_shader_post,
+	e_shader_text,
+	e_shader_circle,
+	e_shader_portal,
 	e_shader_count,
 };
 
@@ -123,13 +126,38 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/flat.shader",
 	"shaders/fresnel.shader",
 	"shaders/post.shader",
+	"shaders/text.shader",
+	"shaders/circle.shader",
+	"shaders/portal.shader",
 };
+
+struct s_len_str
+{
+	char* str;
+	int len;
+
+	char operator[](int index)
+	{
+		assert(index < len);
+		return str[index];
+	}
+};
+
+struct s_text_iterator
+{
+	int index;
+	s_len_str text;
+	s_list<s_v4, 4> color_stack;
+	s_v4 color;
+};
+
 
 enum e_texture
 {
 	e_texture_white,
 	e_texture_shadow_map,
 	e_texture_noise,
+	e_texture_font,
 	e_texture_count
 };
 
@@ -137,6 +165,7 @@ global constexpr char* c_texture_path_arr[e_texture_count] = {
 	"",
 	"",
 	"assets/noise.png",
+	"",
 };
 
 enum e_game_state
@@ -150,13 +179,23 @@ enum e_sound
 	e_sound_pop,
 	e_sound_defeat,
 	e_sound_clap,
+	e_sound_dash,
+	e_sound_knock,
 	e_sound_count,
 };
 
-global constexpr char* c_sound_path_arr[e_sound_count] = {
-	"assets/pop.wav",
-	"assets/defeat.wav",
-	"assets/clap.wav",
+struct s_sound_data
+{
+	char* path;
+	u8 volume;
+};
+
+global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
+	{"assets/pop.wav", 128},
+	{"assets/defeat.wav", 128},
+	{"assets/clap.wav", 128},
+	{"assets/dash.wav", 48},
+	{"assets/knock.wav", 128},
 };
 
 enum e_depth_mode
@@ -226,6 +265,8 @@ struct s_ply_mesh
 struct s_instance_data
 {
 	s_v4 color;
+	s_v2 uv_min;
+	s_v2 uv_max;
 	s_m4 model;
 };
 #pragma pack(pop)
@@ -256,6 +297,34 @@ struct s_render_group
 	e_mesh mesh_id;
 };
 
+struct s_glyph
+{
+	int advance_width;
+	int width;
+	int height;
+	int x0;
+	int y0;
+	int x1;
+	int y1;
+	s_v2 uv_min;
+	s_v2 uv_max;
+};
+
+struct s_texture
+{
+	u32 id;
+};
+
+struct s_font
+{
+	float size;
+	float scale;
+	int ascent;
+	int descent;
+	int line_gap;
+	s_glyph glyph_arr[1024];
+};
+
 struct s_vbo
 {
 	u32 id;
@@ -268,11 +337,6 @@ struct s_mesh
 	u32 vao;
 	u32 vertex_vbo;
 	s_vbo instance_vbo;
-};
-
-struct s_texture
-{
-	u32 id;
 };
 
 struct s_shader
@@ -337,6 +401,43 @@ struct s_projectile
 	s_v3 pos;
 };
 
+struct s_fct
+{
+	float spawn_timestamp;
+	s_len_str text;
+	s_v3 pos;
+	s_v3 start_pos;
+	s_v3 target_pos;
+};
+
+struct s_particle_spawn_data
+{
+	float shrink;
+	b8 color_rand_per_channel;
+	float duration;
+	float duration_rand;
+	float radius;
+	float radius_rand;
+	s_v4 color;
+	float color_rand;
+	s_v3 dir;
+	s_v3 dir_rand;
+	float speed;
+	float speed_rand;
+};
+
+struct s_particle
+{
+	s_v3 pos;
+	s_v3 dir;
+	float speed;
+	float shrink;
+	float duration;
+	float spawn_timestamp;
+	float radius;
+	s_v4 color;
+};
+
 struct s_soft_game_data
 {
 	s_player player;
@@ -346,16 +447,20 @@ struct s_soft_game_data
 	float want_dash_timestamp;
 	int hovered_boost;
 	float defeat_timestamp;
+	s_list<s_particle, 4096> particle_arr;
 };
 
 struct s_hard_game_data
 {
+	b8 display_checkpoint;
 	float highest_z;
 	s_soft_game_data soft_data;
+	s_list<s_fct, 16> fct_arr;
 };
 
 struct s_game
 {
+	b8 reload_shaders;
 	s_linear_arena update_frame_arena;
 	s_linear_arena render_frame_arena;
 	u32 ubo;
@@ -372,6 +477,8 @@ struct s_game
 	s_down_input down_input;
 	Mix_Chunk* sound_arr[e_sound_count];
 	int speed_index;
+	s_font font;
+	s_rng rng;
 
 	b8 do_soft_reset;
 	b8 do_hard_reset;
@@ -384,5 +491,27 @@ struct s_game
 	s_instance_data* render_instance_arr[e_shader_count][e_texture_count][e_mesh_count];
 	s_list<s_render_group, 128> render_group_arr;
 };
+
+
+template <size_t T>
+func constexpr s_len_str S(const char (&str)[T])
+{
+	s_len_str result;
+	result.len = T - 1;
+	result.str = (char*)str;
+	return result;
+}
+
+func constexpr s_len_str S(char* str)
+{
+	s_len_str result;
+	result.str = str;
+	result.len = 0;
+	while(str[result.len] != '\0') {
+		result.len += 1;
+	}
+	return result;
+}
+
 
 #include "generated/generated_game.cpp"

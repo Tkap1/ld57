@@ -37,3 +37,5 @@ func s_v3 go_towards(s_v3 from, s_v3 to, float amount);
 func float sign(float x);
 func b8 sphere_vs_sphere(s_v3 pos1, float r1, s_v3 pos2, float r2);
 func void scale_m4_by_radius(s_m4* out, float radius);
+template <typename t>
+func t max(t a, t b);

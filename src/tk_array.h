@@ -17,6 +17,7 @@ struct s_list
 	t pop_last();
 	t* add(t new_element);
 	void remove_and_swap(int index);
+	t get_last();
 };
 
 template <typename t, int n>
@@ -39,7 +40,7 @@ t s_list<t, n>::pop_last()
 template <typename t, int n>
 t* s_list<t, n>::add(t new_element)
 {
-	assert(count < n);
+	assert(this->count < n);
 	t* result = &this->data[this->count];
 	this->data[this->count] = new_element;
 	this->count += 1;
@@ -49,7 +50,15 @@ t* s_list<t, n>::add(t new_element)
 template <typename t, int n>
 void s_list<t, n>::remove_and_swap(int index)
 {
-	assert(index < count);
+	assert(index < this->count);
 	this->count -= 1;
 	this->data[index] = this->data[this->count];
+}
+
+template <typename t, int n>
+t s_list<t, n>::get_last()
+{
+	assert(this->count > 0)
+	t result = data[this->count - 1];
+	return result;
 }

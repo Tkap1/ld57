@@ -33,3 +33,10 @@ static u8* arena_alloc(s_linear_arena* arena, int requested_size)
 	arena->used += size;
 	return result;
 }
+
+static u8* arena_alloc_zero(s_linear_arena* arena, int requested_size)
+{
+	u8* result = arena_alloc(arena, requested_size);
+	memset(result, 0, requested_size);
+	return result;
+}

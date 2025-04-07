@@ -5,7 +5,9 @@ layout (location = 1) in vec3 vertex_normal;
 layout (location = 2) in vec4 vertex_color;
 layout (location = 3) in vec2 vertex_uv;
 layout (location = 4) in vec4 instance_color;
-layout (location = 5) in mat4 instance_model;
+layout (location = 5) in vec4 instance_uv_min;
+layout (location = 6) in vec4 instance_uv_max;
+layout (location = 7) in mat4 instance_model;
 #endif
 
 shared_var vec4 v_color;
@@ -40,7 +42,7 @@ void main()
 	// n = pow(n, 0.25);
 	// color = vec3(texture(noise, v_uv).r) * v_color.rgb;
 	color.rgb = vec3(0.0);
-	float a = smoothstep(0.3, 0.6, abs(uv.x)+n*0.1);
+	float a = smoothstep(0.2, 0.5, abs(uv.x)+n*0.1);
 	// float a = 1;
 	out_color = vec4(color, a);
 }

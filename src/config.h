@@ -16,10 +16,17 @@ global constexpr float c_game_speed_arr[] = {
 	2, 4, 8, 16
 };
 
+global constexpr float c_bottom = 2000;
+
+global constexpr int c_boost_z_start = 10;
+global constexpr int c_boost_z_end = 1900;
+global constexpr int c_boost_z_step = 9;
+global constexpr int c_boost_chance = 65;
+
 global constexpr int c_bounce_proj_z_start = 20;
 global constexpr int c_bounce_proj_z_end = 300;
-global constexpr int c_bounce_proj_z_step = 9;
-global constexpr int c_bounce_proj_chance = 65;
+global constexpr int c_bounce_proj_z_step = 5;
+global constexpr int c_bounce_proj_chance = 70;
 
 global constexpr int c_default_proj_z_start = 200;
 global constexpr int c_default_proj_z_end = 600;

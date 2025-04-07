@@ -51,11 +51,17 @@
 #pragma clang diagnostic ignored "-Wunused-value"
 #endif
 
+#if defined(__EMSCRIPTEN__)
+#define m_gl_single_channel GL_LUMINANCE
+#else // __EMSCRIPTEN__
+#define m_gl_single_channel GL_RED
+#endif // __EMSCRIPTEN__
+
 
 #include "tk_types.h"
 
 #if defined(m_debug)
-#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); }}
+#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); __debugbreak(); }}
 #define assert(condition) if(!(condition)) { on_failed_assert(#condition, __FILE__, __LINE__); }
 #else // m_debug
 #define gl(...) __VA_ARGS__
@@ -89,6 +95,8 @@ void init(s_platform_data* platform_data)
 	game = (s_game*)platform_data->memory;
 	game->speed_index = 5;
 	game->do_hard_reset = true;
+	game->rng = make_rng(1234);
+	game->reload_shaders = true;
 
 	{
 		u8* memory = platform_data->memory + sizeof(s_game);
@@ -183,12 +191,8 @@ void init(s_platform_data* platform_data)
 		bind_framebuffer(0);
 	}
 
-	for(int i = 0; i < e_shader_count; i += 1) {
-		game->shader_arr[i] = load_shader_from_file(c_shader_path_arr[i], &game->render_frame_arena);
-	}
-
 	for(int i = 0; i < e_sound_count; i += 1) {
-		game->sound_arr[i] = load_sound_from_file(c_sound_path_arr[i]);
+		game->sound_arr[i] = load_sound_from_file(c_sound_data_arr[i].path, c_sound_data_arr[i].volume);
 	}
 
 	for(int i = 0; i < e_texture_count; i += 1) {
@@ -197,6 +201,8 @@ void init(s_platform_data* platform_data)
 			game->texture_arr[i] = load_texture_from_file(path);
 		}
 	}
+
+	game->font = load_font_from_file("assets/Inconsolata-Regular.ttf", 64, &game->render_frame_arena);
 }
 
 void init_after_recompile(s_platform_data* platform_data)
@@ -296,6 +302,7 @@ func void input()
 					}
 					else if(event.key.keysym.sym == SDLK_f && event.key.repeat == 0) {
 						game->hard_data.soft_data.want_dash_timestamp = game->update_time;
+						// game->hard_data.display_checkpoint = true;
 					}
 					else if(event.key.keysym.sym == SDLK_r && event.key.repeat == 0) {
 						game->do_hard_reset = true;
@@ -373,20 +380,20 @@ func void update()
 		s_rng rng = make_rng(0);
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		{
-			int z = 10;
-			while(z < 1000) {
-				if(chance100(&rng, 50)) {
+			int z = c_boost_z_start;
+			while(z < c_boost_z_end) {
+				if(chance100(&rng, c_boost_chance)) {
 					int count = rand_range_ii(&rng, 1, 5);
 					for(int i = 0; i < count; i += 1) {
 						s_speed_boost boost = zero;
 						boost.pos = v3(
 							-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
 						);
-						z += 10;
+						z += c_boost_z_step;
 						soft_data->speed_boost_arr.add(boost);
 					}
 				}
-				z += 20;
+				z += c_boost_z_step;
 			}
 		}
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -481,17 +488,33 @@ func void update()
 		case e_player_state_dashing: {
 			do_move = false;
 			assert(soft_data->player.dash_target.valid);
-			s_speed_boost* boost = &soft_data->speed_boost_arr[player->dash_target.value];
-			s_v3 dir = v3_normalized(boost->pos - player->pos);
+			s_speed_boost boost = soft_data->speed_boost_arr[player->dash_target.value];
+			s_v3 dir = v3_normalized(boost.pos - player->pos);
 			player->vel = dir;
-			player->pos = go_towards(player->pos, boost->pos, 1.0f);
-			if(v3_distance(player->pos, boost->pos) < 0.01f) {
+			player->pos = go_towards(player->pos, boost.pos, 1.0f);
+			if(v3_distance(player->pos, boost.pos) < 0.01f) {
 				soft_data->speed_boost_arr.remove_and_swap(soft_data->player.dash_target.value);
 				set_player_state(e_player_state_post_dash);
 				player->dash_target = maybe<int>();
 				player->post_dash_timestamp = game->update_time;
 				player->vel = zero;
 				play_sound(e_sound_pop);
+
+				{
+					s_particle_spawn_data data = zero;
+					data.shrink = 0.5f;
+					data.duration = 0.5f;
+					data.duration_rand = 0.5f;
+					data.radius = 1.5f;
+					data.radius_rand = 0.25f;
+					data.color = make_color(0.5f, 1.0f, 0.5f);
+					data.color_rand = 1.0f;
+					data.dir = v3(1);
+					data.dir_rand = v3(1);
+					data.speed = 0.1f;
+					data.speed_rand = 0.5f;
+					spawn_particles(64, boost.pos, data);
+				}
 			}
 		} break;
 
@@ -505,23 +528,34 @@ func void update()
 
 	if(do_move) {
 		player->pos += player->vel;
-		player->vel *= 0.9f;
+
+		float x_vel_len = fabsf(player->vel.x);
 
 		if(player->pos.x < -c_wall_x + 2) {
 			player->vel.x *= -0.8f;
 			player->pos.x = -c_wall_x + 2;
+			if(x_vel_len >= 0.25f) {
+				play_sound(e_sound_knock);
+			}
 		}
 		if(player->pos.x > c_wall_x - 2) {
 			player->vel.x *= -0.8f;
 			player->pos.x = c_wall_x - 2;
+			if(x_vel_len >= 0.25f) {
+				play_sound(e_sound_knock);
+			}
 		}
+		player->vel *= 0.9f;
 	}
 
 	{
-		float curr_checkpoint = floorf(game->hard_data.highest_z / 100);
-		float next_checkpoint = curr_checkpoint + 100;
-		game->hard_data.highest_z = fabsf(player->pos.z);
-		if(player->pos.z >= next_checkpoint) {
+		float player_z = fabsf(player->pos.z);
+		int curr_checkpoint = floorfi(game->hard_data.highest_z / 100);
+		int next_checkpoint = curr_checkpoint + 1;
+		game->hard_data.highest_z = max(game->hard_data.highest_z, player_z);
+		if(player_z >= next_checkpoint * 100) {
+			hard_data->display_checkpoint = true;
+
 			// @TODO(tkap, 05/04/2025): better sound
 			play_sound(e_sound_pop);
 		}
@@ -578,6 +612,31 @@ func void render(float interp_dt, float delta)
 {
 	game->render_frame_arena.used = 0;
 
+	#if defined(_WIN32)
+	while(g_platform_data->hot_read_index < g_platform_data->hot_write_index) {
+		char* path = g_platform_data->hot_file_arr[g_platform_data->hot_read_index % c_max_hot_files];
+		printf("%s\n", path);
+		if(strstr(path, ".shader")) {
+			game->reload_shaders = true;
+		}
+		g_platform_data->hot_read_index += 1;
+	}
+	#endif // _WIN32
+
+	if(game->reload_shaders) {
+		game->reload_shaders = false;
+
+		for(int i = 0; i < e_shader_count; i += 1) {
+			s_shader shader = load_shader_from_file(c_shader_path_arr[i], &game->render_frame_arena);
+			if(shader.id > 0) {
+				if(game->shader_arr[i].id > 0) {
+					gl(glDeleteProgram(game->shader_arr[i].id));
+				}
+				game->shader_arr[i] = shader;
+			}
+		}
+	}
+
 	s_hard_game_data* hard_data = &game->hard_data;
 	s_soft_game_data* soft_data = &hard_data->soft_data;
 	s_player* player = &soft_data->player;
@@ -602,7 +661,7 @@ func void render(float interp_dt, float delta)
 	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
 
 	s_v3 cam_pos = v3(
-		0, -20, player_pos.z - 5
+		0, -25, player_pos.z - 5
 	);
 	s_v3 cam_forward = v3_normalized(v3(0, 1, -0.1f));
 	s_m4 view = look_at(cam_pos, cam_pos + cam_forward, c_up_axis);
@@ -621,6 +680,20 @@ func void render(float interp_dt, float delta)
 		// game->player_dir.z = -z_speed;
 	}
 
+	if(hard_data->display_checkpoint) {
+		hard_data->display_checkpoint = false;
+		s_fct fct = zero;
+		fct.text = S("Checkpoint!");
+		fct.start_pos = cam_pos;
+		fct.pos = cam_pos;
+		s_v3 dir = v3_normalized(cam_forward + v3(0, 0, -0.5f));
+		fct.target_pos = cam_pos + dir * 100;
+		// fct.target_pos = v3(0, 10, -100);
+		// fct.target_pos = v3(0, 0, -20);
+		fct.spawn_timestamp = game->render_time;
+		hard_data->fct_arr.add(fct);
+	}
+
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render into depth start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
 		// draw_game(e_shader_depth_only);
@@ -634,7 +707,7 @@ func void render(float interp_dt, float delta)
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render into depth end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 	if(game->view_state == e_view_state_shadow_map) {
-		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map, e_shader_flat);
+		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_shadow_map, e_shader_flat, zero, zero);
 		s_render_flush_data data = make_render_flush_data(cam_pos);
 		data.projection = ortho;
 		clear_framebuffer_depth(0);
@@ -668,8 +741,93 @@ func void render(float interp_dt, float delta)
 		}
 		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		{
-			draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post);
+			// s_particle_spawn_data data = zero;
+			// data.duration = 1.0f;
+			// data.duration_rand = 1.0f;
+			// spawn_particles(1, ray_at_y(ray, 0.0f), data);
+		}
+
+		{
+			s_particle_spawn_data data = zero;
+			data.shrink = 0.5f;
+			data.duration = 0.5f;
+			data.duration_rand = 0.5f;
+			data.radius = 1.5f;
+			data.radius_rand = 0.25f;
+			data.color = hex_to_rgb(0xFAD201);
+			data.color_rand = 1.0f;
+			data.dir = v3(0.5f, 1, 1.0f);
+			data.dir_rand = v3(1);
+			data.speed = 0.01f;
+			data.speed_rand = 0.5f;
+
+			s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
+			spawn_particles(1, player_pos + pos, data);
+		}
+
+		{
+			s_particle_spawn_data data = zero;
+			data.shrink = 0.5f;
+			data.duration = 0.5f;
+			data.duration_rand = 0.5f;
+			data.radius = 1.5f;
+			data.radius_rand = 0.25f;
+			data.color = hex_to_rgb(0x0);
+			data.dir = v3(0.5f, 1, 1.0f);
+			data.dir_rand = v3(1);
+			data.speed = 0.01f;
+			data.speed_rand = 0.5f;
+
+			spawn_particles(4, ray_at_y(ray, 0.0f), data);
+		}
+
+		update_particles();
+		{
+			s_render_flush_data data = make_render_flush_data(cam_pos);
+			data.projection = perspective;
+			data.view = view;
+			data.blend_mode = e_blend_mode_additive;
+			data.depth_mode = e_depth_mode_read_no_write;
+			render_flush(data, true);
+		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		particles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		{
+			draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
+			s_render_flush_data data = make_render_flush_data(cam_pos);
+			data.projection = ortho;
+			data.blend_mode = e_blend_mode_normal;
+			data.depth_mode = e_depth_mode_no_read_no_write;
+			render_flush(data, true);
+		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		post end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		fct start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		{
+
+		// 	foreach_ptr(fct_i, fct, hard_data->fct_arr) {
+		// 		float passed = at_most(1.0f, game->render_time - fct->spawn_timestamp);
+		// 		fct->pos = lerp_v3(fct->start_pos, fct->target_pos, passed);
+		// 		draw_text_world(fct->text, fct->pos, 1.0f, make_color(1), true, &game->font);
+		// 	}
+
+		// 	s_render_flush_data data = make_render_flush_data(cam_pos);
+		// 	data.projection = perspective;
+		// 	data.view = view;
+		// 	data.blend_mode = e_blend_mode_normal;
+		// 	data.depth_mode = e_depth_mode_no_read_no_write;
+		// 	render_flush(data, true);
+		}
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		fct end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+
+		{
+			s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
+			draw_text(text, v2(4), 48, make_color(1), false, &game->font);
 			s_render_flush_data data = make_render_flush_data(cam_pos);
 			data.projection = ortho;
 			data.blend_mode = e_blend_mode_normal;
@@ -740,12 +898,14 @@ func void draw_rect(s_v2 pos, s_v2 size, s_v4 color)
 	add_to_render_group(data, e_shader_mesh, e_texture_white, e_mesh_quad);
 }
 
-func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id)
+func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id, s_v2 uv_min, s_v2 uv_max)
 {
 	s_instance_data data = zero;
 	data.model = m4_translate(v3(pos, 0));
 	data.model = m4_multiply(data.model, m4_scale(v3(size, 1)));
 	data.color = color;
+	data.uv_min = uv_min;
+	data.uv_max = uv_max;
 
 	add_to_render_group(data, shader_id, texture_id, e_mesh_quad);
 }
@@ -856,6 +1016,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		gl(glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertex_count, *instance_count));
 		if(reset_render_count) {
 			game->render_group_arr.remove_and_swap(group_i);
+			game->render_group_index_arr[group.shader_id][group.texture_id][group.mesh_id] = -1;
 			group_i -= 1;
 			*instance_count = 0;
 		}
@@ -922,7 +1083,7 @@ func s_shader load_shader_from_file(char* file, s_linear_arena* arena)
 	const char* header = "#version 330 core\n";
 	#endif
 
-	char* shared_src = (char*)read_file("src/shader_shared.h", arena);
+	char* shared_src = (char*)try_really_hard_to_read_file("src/shader_shared.h", arena);
 	assert(shared_src);
 
 	for(int i = 0; i < 2; i += 1) {
@@ -1086,13 +1247,25 @@ func s_mesh make_mesh_from_vertices(s_vertex* vertex_arr, int vertex_count)
 		gl(glBindBuffer(GL_ARRAY_BUFFER, result.instance_vbo.id));
 
 		u8* offset = 0;
-		constexpr int stride = sizeof(float) * 20;
+		constexpr int stride = sizeof(float) * 24;
 
 		gl(glVertexAttribPointer(attrib_index, 4, GL_FLOAT, GL_FALSE, stride, offset)); // instance color
 		gl(glEnableVertexAttribArray(attrib_index));
 		gl(glVertexAttribDivisor(attrib_index, 1));
 		attrib_index += 1;
 		offset += sizeof(float) * 4;
+
+		gl(glVertexAttribPointer(attrib_index, 2, GL_FLOAT, GL_FALSE, stride, offset)); // uv min
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 2;
+
+		gl(glVertexAttribPointer(attrib_index, 2, GL_FLOAT, GL_FALSE, stride, offset)); // uv max
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 2;
 
 		gl(glVertexAttribPointer(attrib_index, 4, GL_FLOAT, GL_FALSE, stride, offset)); // mat4_0
 		gl(glEnableVertexAttribArray(attrib_index));
@@ -1333,7 +1506,7 @@ func void draw_game(s_ray ray, float interp_dt)
 		s_m4 model = m4_translate(boost.pos);
 		scale_m4_by_radius(&model, c_boost_radius);
 		s_v4 color = make_color(0.1f, 1, 0.1f);
-		if(boost_is_hovered(ray_p, boost.pos)) {
+		if(is_boost_hovered(ray_p, boost.pos)) {
 			color = make_color(0.5f, 1, 0.5f);
 			soft_data->hovered_boost = boost_i;
 		}
@@ -1387,17 +1560,18 @@ func void toggle(t* out, t a, t b)
 	invalid_else;
 }
 
-func b8 boost_is_hovered(s_v3 mouse_point, s_v3 boost_pos)
+func b8 is_boost_hovered(s_v3 mouse_point, s_v3 boost_pos)
 {
 	float dist = v3_distance(mouse_point, boost_pos);
-	b8 result = dist <= c_boost_radius * 3;
+	b8 result = dist <= c_boost_radius * 4;
 	return result;
 }
 
-func Mix_Chunk* load_sound_from_file(char* path)
+func Mix_Chunk* load_sound_from_file(char* path, u8 volume)
 {
 	Mix_Chunk* chunk = Mix_LoadWAV(path);
 	assert(chunk);
+	chunk->volume = volume;
 	return chunk;
 }
 
@@ -1425,6 +1599,7 @@ func void try_to_dash()
 				set_player_state(e_player_state_dashing);
 				player->dash_target = maybe(soft_data->hovered_boost);
 				soft_data->want_dash_timestamp = 0;
+				play_sound(e_sound_dash);
 			}
 		} break;
 
@@ -1437,12 +1612,14 @@ func void try_to_dash()
 				set_player_state(e_player_state_dashing);
 				player->dash_target = maybe(soft_data->hovered_boost);
 				soft_data->want_dash_timestamp = 0;
+				play_sound(e_sound_dash);
 			}
 			else {
 				s_v3 dir = v3_normalized(player->wanted_pos - player->pos);
 				player->vel += dir * 1.5f;
 				set_player_state(e_player_state_default);
 				soft_data->want_dash_timestamp = 0;
+				play_sound(e_sound_dash);
 			}
 		} break;
 	}
@@ -1450,15 +1627,21 @@ func void try_to_dash()
 
 func s_texture load_texture_from_file(char* path)
 {
-	s_texture result = zero;
-
 	int width, height, num_channels;
 	void* data = stbi_load(path, &width, &height, &num_channels, 4);
 	assert(data);
 
+	s_texture result = load_texture_from_data(data, width, height, GL_RGBA);
+	return result;
+}
+
+func s_texture load_texture_from_data(void* data, int width, int height, int format)
+{
+	s_texture result = zero;
+
 	gl(glGenTextures(1, &result.id));
 	gl(glBindTexture(GL_TEXTURE_2D, result.id));
-	gl(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data));
+	gl(glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data));
 	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT));
 	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT));
 	gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
@@ -1481,5 +1664,442 @@ func s_maybe<t> maybe(t value)
 	s_maybe<t> result = zero;
 	result.valid = true;
 	result.value = value;
+	return result;
+}
+
+// @TODO(tkap, 13/10/2024): premultiply??
+func s_font load_font_from_file(char* file, int font_size, s_linear_arena* arena)
+{
+	u8* file_data = read_file(file, arena);
+	s_font font = {};
+	font.size = (float)font_size;
+
+	assert(file_data);
+
+	stbtt_fontinfo info = {};
+	stbtt_InitFont(&info, file_data, 0);
+
+	stbtt_GetFontVMetrics(&info, &font.ascent, &font.descent, &font.line_gap);
+
+	font.scale = stbtt_ScaleForPixelHeight(&info, (float)font_size);
+	constexpr int max_chars = 128;
+	int bitmap_count = 0;
+	u8* bitmap_arr[max_chars];
+	const int padding = 10;
+
+	int columns = floorfi((float)(4096 / (font_size + padding)));
+	int rows = ceilfi((max_chars - columns) / (float)columns) + 1;
+
+	int total_width = floorfi((float)(columns * (font_size + padding)));
+	// @Note(tkap, 20/10/2023): We need to align the texture width to 4 bytes! Very important! Thanks to tk_dev
+	total_width = (total_width + 3) & ~3;
+	int total_height = floorfi((float)(rows * (font_size + padding)));
+
+	for(int char_i = 0; char_i < max_chars; char_i++)
+	{
+		s_glyph glyph = {};
+		u8* bitmap = stbtt_GetCodepointBitmap(&info, 0, font.scale, char_i, &glyph.width, &glyph.height, 0, 0);
+		stbtt_GetCodepointBox(&info, char_i, &glyph.x0, &glyph.y0, &glyph.x1, &glyph.y1);
+		stbtt_GetGlyphHMetrics(&info, char_i, &glyph.advance_width, NULL);
+
+		font.glyph_arr[char_i] = glyph;
+		bitmap_arr[bitmap_count++] = bitmap;
+	}
+
+	u8* gl_bitmap = (u8*)arena_alloc_zero(arena, sizeof(u8) * 1 * total_width * total_height);
+
+	for(int char_i = 0; char_i < max_chars; char_i++) {
+		s_glyph* glyph = &font.glyph_arr[char_i];
+		u8* bitmap = bitmap_arr[char_i];
+		int column = char_i % columns;
+		int row = char_i / columns;
+		for(int y = 0; y < glyph->height; y++) {
+			for(int x = 0; x < glyph->width; x++) {
+				int current_x = floorfi((float)(column * (font_size + padding)));
+				int current_y = floorfi((float)(row * (font_size + padding)));
+				u8 src_pixel = bitmap[x + y * glyph->width];
+				u8* dst_pixel = &gl_bitmap[((current_x + x) + (current_y + y) * total_width)];
+				dst_pixel[0] = src_pixel;
+			}
+		}
+
+		glyph->uv_min.x = column / (float)columns;
+		glyph->uv_max.x = glyph->uv_min.x + (glyph->width / (float)total_width);
+
+		glyph->uv_min.y = row / (float)rows;
+
+		// @Note(tkap, 17/05/2023): For some reason uv_max.y is off by 1 pixel (checked the texture in renderoc), which causes the text to be slightly miss-positioned
+		// in the Y axis. "glyph->height - 1" fixes it.
+		glyph->uv_max.y = glyph->uv_min.y + (glyph->height / (float)total_height);
+
+		// @Note(tkap, 17/05/2023): Otherwise the line above makes the text be cut off at the bottom by 1 pixel...
+		// glyph->uv_max.y += 0.01f;
+	}
+
+	for(int bitmap_i = 0; bitmap_i < bitmap_count; bitmap_i++) {
+		stbtt_FreeBitmap(bitmap_arr[bitmap_i], NULL);
+	}
+
+	game->texture_arr[e_texture_font] = load_texture_from_data(gl_bitmap, total_width, total_height, m_gl_single_channel);
+
+	return font;
+}
+
+func s_v2 draw_text(s_len_str text, s_v2 in_pos, float font_size, s_v4 color, b8 centered, s_font* font)
+{
+	float scale = font->scale * (font_size / font->size);
+
+	assert(text.len > 0);
+	if(centered) {
+		s_v2 text_size = get_text_size(text, font, font_size);
+		in_pos.x -= text_size.x / 2;
+		in_pos.y -= text_size.y / 2;
+	}
+	s_v2 pos = in_pos;
+	pos.y += font->ascent * scale;
+
+	s_text_iterator it = {};
+	while(iterate_text(&it, text, color)) {
+		for(int char_i = 0; char_i < it.text.len; char_i++) {
+			int c = it.text[char_i];
+			if(c <= 0 || c >= 128) { continue; }
+
+			if(c == '\n' || c == '\r') {
+				pos.x = in_pos.x;
+				pos.y += font_size;
+				continue;
+			}
+
+			s_glyph glyph = font->glyph_arr[c];
+			s_v2 draw_size = v2((glyph.x1 - glyph.x0) * scale, (glyph.y1 - glyph.y0) * scale);
+
+			s_v2 glyph_pos = pos;
+			glyph_pos.x += glyph.x0 * scale;
+			glyph_pos.y += -glyph.y0 * scale;
+
+			// t.flags |= e_render_flag_use_texture | e_render_flag_text;
+			s_v3 tpos = v3(glyph_pos, 0.0f);
+
+			s_v2 center = tpos.xy + draw_size / 2 * v2(1, -1);
+			s_v2 bottomleft = tpos.xy;
+
+
+			// pos.xy = v2_rotate_around(center, in_pos, t.rotation) + (bottomleft - center);
+
+			s_m4 model = m4_translate(v3(tpos.xy, 0));
+			model = m4_multiply(model, m4_scale(v3(draw_size, 1)));
+
+			// t.color = it.color;
+			s_v2 uv_min = glyph.uv_min;
+			s_v2 uv_max = glyph.uv_max;
+			// swap(&uv_min.y, &uv_max.y);
+			// t.origin_offset = c_origin_bottomleft;
+
+			draw_texture_screen(tpos.xy, draw_size, it.color, e_texture_font, e_shader_text, uv_min, uv_max);
+
+			// draw_generic(game_renderer, &t, render_pass, render_data.shader, font->texture.game_id, e_mesh_rect);
+
+			pos.x += glyph.advance_width * scale;
+
+		}
+	}
+
+	return v2(pos.x, in_pos.y);
+}
+
+// @TODO(tkap, 31/10/2023): Handle new lines
+func s_v2 get_text_size_with_count(s_len_str in_text, s_font* font, float font_size, int count, int in_column)
+{
+	assert(count >= 0);
+	if(count <= 0) { return {}; }
+
+	int column = in_column;
+
+	s_v2 size = {};
+	float max_width = 0;
+	float scale = font->scale * (font_size / font->size);
+	size.y = font_size;
+
+	s_len_str text = substr_from_to_exclusive(in_text, 0, count);
+	s_text_iterator it = {};
+	while(iterate_text(&it, text, make_color(0))) {
+		for(int char_i = 0; char_i < it.text.len; char_i++) {
+			char c = it.text[char_i];
+			s_glyph glyph = font->glyph_arr[c];
+			if(c == '\t') {
+				int spaces = get_spaces_for_column(column);
+				size.x += glyph.advance_width * scale * spaces;
+				column += spaces;
+			}
+			else if(c == '\n') {
+				size.y += font_size;
+				size.x = 0;
+				column = 0;
+			}
+			else {
+				size.x += glyph.advance_width * scale;
+				column += 1;
+			}
+			max_width = max(size.x, max_width);
+		}
+	}
+	size.x = max_width;
+
+	return size;
+}
+
+func s_v2 get_text_size(s_len_str text, s_font* font, float font_size)
+{
+	return get_text_size_with_count(text, font, font_size, text.len, 0);
+}
+
+func b8 iterate_text(s_text_iterator* it, s_len_str text, s_v4 color)
+{
+	if(it->index >= text.len) { return false; }
+
+	if(it->color_stack.count <= 0) {
+		it->color_stack.add(color);
+	}
+
+	it->color = it->color_stack.get_last();
+
+	int index = it->index;
+	int advance = 0;
+	while(index < text.len) {
+		char c = text[index];
+		char next_c = index < text.len - 1 ? text[index + 1] : 0;
+		if(c == '$' && next_c == '$') {
+			s_len_str red_str = substr_from_to_exclusive(text, index + 2, index + 4);
+			s_len_str green_str = substr_from_to_exclusive(text, index + 4, index + 6);
+			s_len_str blue_str = substr_from_to_exclusive(text, index + 6, index + 8);
+			float red = hex_str_to_int(red_str) / 255.0f;
+			float green = hex_str_to_int(green_str) / 255.0f;
+			float blue = hex_str_to_int(blue_str) / 255.0f;
+			s_v4 temp_color = make_color(red, green, blue);
+			it->color_stack.add(temp_color);
+
+			if(index == it->index) {
+				index += 8;
+				it->index += 8;
+				it->color = it->color_stack.get_last();
+				continue;
+			}
+			else {
+				advance = 8;
+				break;
+			}
+		}
+		else if(c == '$' && next_c == '.') {
+			if(index == it->index) {
+				it->color_stack.pop_last();
+				it->color = it->color_stack.get_last();
+				index += 2;
+				it->index += 2;
+				continue;
+			}
+			else {
+				advance = 2;
+				it->color_stack.pop_last();
+				break;
+			}
+		}
+		index += 1;
+	}
+	it->text = substr_from_to_exclusive(text, it->index, index);
+	it->index = index + advance;
+	return true;
+}
+
+[[nodiscard]] func s_len_str substr_from_to_exclusive(s_len_str x, int start, int end)
+{
+	assert(start >= 0);
+	assert(end > start);
+	return {.str = x.str + start, .len = end - start};
+}
+
+func int get_spaces_for_column(int column)
+{
+	constexpr int tab_size = 4;
+	if(tab_size <= 0) { return 0; }
+	return tab_size - (column % tab_size);
+}
+
+func int hex_str_to_int(s_len_str str)
+{
+	int result = 0;
+	int tens = 0;
+	for(int i = str.len - 1; i >= 0; i -= 1) {
+		char c = str[i];
+		int val = 0;
+		if(is_number(c)) {
+			val = c - '0';
+		}
+		else if(c >= 'a' && c <= 'f') {
+			val = c - 'a' + 10;
+		}
+		else if(c >= 'A' && c <= 'F') {
+			val = c - 'A' + 10;
+		}
+		result += val * (int)powf(16, (float)tens);
+		tens += 1;
+	}
+	return result;
+}
+
+func b8 is_number(char c)
+{
+	return c >= '0' && c <= '9';
+}
+
+func b8 is_alpha(char c)
+{
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+func b8 is_alpha_numeric(char c)
+{
+	return is_number(c) || is_alpha(c);
+}
+
+func b8 can_start_identifier(char c)
+{
+	return is_alpha(c) || c == '_';
+}
+
+func b8 can_continue_identifier(char c)
+{
+	return is_alpha(c) || is_number(c) || c == '_';
+}
+
+func s_len_str format_text(const char* text, ...)
+{
+	static constexpr int max_format_text_buffers = 16;
+	static constexpr int max_text_buffer_length = 256;
+
+	static char buffers[max_format_text_buffers][max_text_buffer_length] = {};
+	static int index = 0;
+
+	char* current_buffer = buffers[index];
+	memset(current_buffer, 0, max_text_buffer_length);
+
+	va_list args;
+	va_start(args, text);
+	#ifdef m_debug
+	int written = vsnprintf(current_buffer, max_text_buffer_length, text, args);
+	assert(written > 0 && written < max_text_buffer_length);
+	#else
+	vsnprintf(current_buffer, max_text_buffer_length, text, args);
+	#endif
+	va_end(args);
+
+	index += 1;
+	if(index >= max_format_text_buffers) { index = 0; }
+
+	return S(current_buffer);
+}
+
+func void spawn_particles(int count, s_v3 pos, s_particle_spawn_data data)
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+	for(int i = 0; i < count; i += 1) {
+		s_particle particle = zero;
+		particle.pos = pos;
+		particle.radius = data.radius * (1.0f - randf32(&game->rng) * data.radius_rand);
+		particle.spawn_timestamp = game->render_time;
+		particle.duration = data.duration * (1.0f - randf32(&game->rng) * data.duration_rand);
+		particle.speed = data.speed * (1.0f - randf32(&game->rng) * data.speed_rand);
+		particle.shrink = data.shrink;
+		if(data.color_rand_per_channel) {
+			float r = (1.0f - randf32(&game->rng) * data.color_rand);
+			float g = (1.0f - randf32(&game->rng) * data.color_rand);
+			float b = (1.0f - randf32(&game->rng) * data.color_rand);
+			particle.color = data.color;
+			particle.color.r *= r;
+			particle.color.g *= g;
+			particle.color.b *= b;
+		}
+		else {
+			float r = (1.0f - randf32(&game->rng) * data.color_rand);
+			particle.color = multiply_rgb(data.color, r);
+		}
+		particle.dir.x = data.dir.x * (1.0f - randf32(&game->rng) * data.dir_rand.x * 2);
+		particle.dir.y = data.dir.y * (1.0f - randf32(&game->rng) * data.dir_rand.y * 2);
+		particle.dir.z = data.dir.z * (1.0f - randf32(&game->rng) * data.dir_rand.z * 2);
+		particle.dir = v3_normalized(particle.dir);
+		soft_data->particle_arr.add(particle);
+	}
+}
+
+func void update_particles()
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+	foreach_ptr(particle_i, particle, soft_data->particle_arr) {
+		float passed = game->render_time - particle->spawn_timestamp;
+		float percent_done = passed / particle->duration;
+		float speed = particle->speed;
+		particle->pos += particle->dir * speed;
+		s_v4 color = particle->color;
+		color.a = 1.0f - percent_done;
+		float radius = particle->radius * (1.0f - percent_done * particle->shrink);
+		{
+			s_instance_data data = zero;
+			data.model = m4_translate(particle->pos);
+			scale_m4_by_radius(&data.model, radius);
+			data.color = color;
+			add_to_render_group(data, e_shader_circle, e_texture_white, e_mesh_quad);
+		}
+		if(passed >= particle->duration) {
+			soft_data->particle_arr.remove_and_swap(particle_i);
+			particle_i -= 1;
+		}
+	}
+}
+
+func s_v4 rand_color(s_rng* rng)
+{
+	s_v4 result;
+	result.x = randf32(rng);
+	result.y = randf32(rng);
+	result.z = randf32(rng);
+	result.a = 1;
+	return result;
+}
+
+func s_v4 rand_color_normalized(s_rng* rng)
+{
+	s_v4 result;
+	result.x = randf32(rng);
+	result.y = randf32(rng);
+	result.z = randf32(rng);
+	result.xyz = v3_normalized(result.xyz);
+	result.a = 1;
+	return result;
+}
+
+func s_v3 random_point_in_sphere(s_rng* rng, float radius)
+{
+	s_v3 pos;
+	while(true) {
+		pos = v3(
+			randf_range(rng, -radius, radius),
+			randf_range(rng, -radius, radius),
+			randf_range(rng, -radius, radius)
+		);
+		float d = v3_length(pos);
+		if(d <= radius) { break; }
+	}
+	return pos;
+}
+
+func u8* try_really_hard_to_read_file(char* file, s_linear_arena* arena)
+{
+	u8* result = null;
+	for(int i = 0; i < 100; i += 1) {
+		result = read_file(file, arena);
+		if(result) {
+			break;
+		}
+		SDL_Delay(10);
+	}
 	return result;
 }

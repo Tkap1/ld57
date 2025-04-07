@@ -9,8 +9,13 @@ struct s_v2
 
 struct s_v3
 {
-	float x;
-	float y;
+	union {
+		struct {
+			float x;
+			float y;
+		};
+		s_v2 xy;
+	};
 	float z;
 };
 
@@ -257,12 +262,28 @@ func constexpr s_v2 operator*(s_v2 a, float b)
 	);
 }
 
+func constexpr s_v2 operator*(s_v2 a, s_v2 b)
+{
+	return v2(
+		a.x * b.x,
+		a.y * b.y
+	);
+}
+
 func constexpr s_v3 operator*(s_v3 a, float b)
 {
 	return v3(
 		a.x * b,
 		a.y * b,
 		a.z * b
+	);
+}
+
+func constexpr s_v2 operator/(s_v2 a, float b)
+{
+	return v2(
+		a.x / b,
+		a.y / b
 	);
 }
 
@@ -955,4 +976,11 @@ func b8 sphere_vs_sphere(s_v3 pos1, float r1, s_v3 pos2, float r2)
 func void scale_m4_by_radius(s_m4* out, float radius)
 {
 	*out = m4_multiply(*out, m4_scale(v3(radius * 2)));
+}
+
+template <typename t>
+func t max(t a, t b)
+{
+	t result = a > b ? a : b;
+	return result;
 }

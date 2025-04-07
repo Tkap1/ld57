@@ -1,4 +1,6 @@
 
+global constexpr int c_max_hot_files = 64;
+
 struct s_v2i
 {
 	int x;
@@ -16,6 +18,9 @@ struct s_platform_data
 	s_v2i window_size;
 	s_v2i prev_window_size;
 	u8* memory;
+	int hot_read_index;
+	int hot_write_index;
+	char hot_file_arr[c_max_hot_files][32];
 };
 
 void init(s_platform_data* platform_data);

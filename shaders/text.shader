@@ -15,13 +15,25 @@ shared_var vec3 v_normal;
 shared_var vec2 v_uv;
 
 #if defined(m_vertex)
+
 void main()
 {
 	vec3 vertex = vertex_pos;
+	vertex.x += 0.5;
+	vertex.y -= 0.5;
 	gl_Position = projection * view * instance_model * vec4(vertex, 1);
 	v_color = vertex_color * instance_color;
 	v_normal = vertex_normal;
-	v_uv = vertex_uv;
+
+	vec2 uv_arr[6] = vec2[](
+		vec2(instance_uv_min.x, instance_uv_min.y),
+		vec2(instance_uv_max.x, instance_uv_min.y),
+		vec2(instance_uv_max.x, instance_uv_max.y),
+		vec2(instance_uv_min.x, instance_uv_min.y),
+		vec2(instance_uv_max.x, instance_uv_max.y),
+		vec2(instance_uv_min.x, instance_uv_max.y)
+	);
+	v_uv = uv_arr[gl_VertexID];
 }
 #endif
 
@@ -34,8 +46,8 @@ out vec4 out_color;
 void main()
 {
 	vec3 color = vec3(0.0);
-	// color = v_color.rgb;
-	color = vec3(texture(in_texture, v_uv).r) * v_color.rgb;
-	out_color = vec4(color, 1.0);
+	float a = texture(in_texture, v_uv).r;
+	color = vec3(1);
+	out_color = vec4(color, a);
 }
 #endif
