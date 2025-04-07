@@ -408,6 +408,7 @@ enum e_projectile_type
 {
 	e_projectile_type_default,
 	e_projectile_type_bounce,
+	e_projectile_type_static,
 };
 
 struct s_projectile

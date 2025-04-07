@@ -304,6 +304,8 @@ func void input()
 		g_mouse.y = range_lerp(g_mouse.y, letterbox.y, letterbox.y + letterbox.size.y, 0, c_world_size.y);
 	}
 
+	s_hard_game_data* hard_data = &game->hard_data;
+
 	SDL_Event event;
 	while(SDL_PollEvent(&event) != 0) {
 		switch(event.type) {
@@ -351,6 +353,24 @@ func void input()
 					else if(key == SDLK_KP_MINUS) {
 						game->speed_index = circular_index(game->speed_index - 1, array_count(c_game_speed_arr));
 						printf("Game speed: %f\n", c_game_speed_arr[game->speed_index]);
+					}
+					else if(key == SDLK_t) {
+						if(!hard_data->curr_checkpoint.valid) {
+							hard_data->curr_checkpoint = maybe(0);
+						}
+						else {
+							hard_data->curr_checkpoint = maybe(circular_index(hard_data->curr_checkpoint.value - 1, 10));
+						}
+						game->do_soft_reset = true;
+					}
+					else if(key == SDLK_y) {
+						if(!hard_data->curr_checkpoint.valid) {
+							hard_data->curr_checkpoint = maybe(0);
+						}
+						else {
+							hard_data->curr_checkpoint = maybe(circular_index(hard_data->curr_checkpoint.value + 1, 10));
+						}
+						game->do_soft_reset = true;
 					}
 					#endif // m_debug
 				}
@@ -417,66 +437,7 @@ func void update()
 					player->pos.z = (index + 1) * (float)-c_checkpoint_step;
 				}
 
-				s_rng rng = make_rng(0);
-				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-				{
-					int z = c_boost_z_start;
-					while(z < c_boost_z_end) {
-						if(chance100(&rng, c_boost_chance)) {
-							int count = rand_range_ii(&rng, 1, 5);
-							for(int i = 0; i < count; i += 1) {
-								s_speed_boost boost = zero;
-								boost.pos = v3(
-									-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-								);
-								z += c_boost_z_step;
-								soft_data->speed_boost_arr.add(boost);
-							}
-						}
-						z += c_boost_z_step;
-					}
-				}
-				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-				{
-					int z = c_default_proj_z_start;
-					while(z < c_default_proj_z_end) {
-						if(chance100(&rng, c_default_proj_chance)) {
-							s_projectile proj = zero;
-							proj.pos = v3(
-								-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-							);
-							proj.type = e_projectile_type_default;
-							proj.prev_pos = proj.pos;
-							proj.radius = randf_range(&rng, 0.5f, 1.5f);
-							proj.going_right = rand_bool(&rng);
-							soft_data->projectile_arr.add(proj);
-							z += c_default_proj_z_step;
-						}
-						z += c_default_proj_z_step * 2;
-					}
-				}
-
-				{
-					int z = c_bounce_proj_z_start;
-					while(z < c_bounce_proj_z_end) {
-						if(chance100(&rng, c_bounce_proj_chance)) {
-							s_projectile proj = zero;
-							proj.pos = v3(
-								-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-							);
-							proj.type = e_projectile_type_bounce;
-							proj.prev_pos = proj.pos;
-							proj.radius = randf_range(&rng, 0.5f, 1.5f);
-							proj.going_right = rand_bool(&rng);
-							soft_data->projectile_arr.add(proj);
-							z += c_bounce_proj_z_step;
-						}
-						z += c_bounce_proj_z_step * 2;
-					}
-				}
-				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+				init_obstacles();
 			}
 
 			b8 want_to_dash = false;
@@ -638,8 +599,9 @@ func void update()
 
 			if(soft_data->state == e_game_state1_default) {
 				foreach_val(proj_i, proj, soft_data->projectile_arr) {
-					if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, proj.radius)) {
-						if(proj.type == e_projectile_type_default) {
+					float generous_radius = proj.radius - 0.35f;
+					if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, generous_radius)) {
+						if(proj.type == e_projectile_type_default || proj.type == e_projectile_type_static) {
 							soft_data->state = e_game_state1_defeat;
 							soft_data->defeat_timestamp = game->update_time;
 							play_sound(e_sound_defeat);
@@ -663,17 +625,20 @@ func void update()
 				foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
 					proj->prev_pos = proj->pos;
 					if(update_entities) {
-						if(proj->going_right) {
-							proj->pos.x += 0.1f;
-						}
-						else {
-							proj->pos.x -= 0.1f;
-						}
-						if(proj->pos.x <= -c_wall_x + 2) {
-							proj->going_right = !proj->going_right;
-						}
-						else if(proj->pos.x >= c_wall_x - 2) {
-							proj->going_right = !proj->going_right;
+						b8 should_move = proj->type != e_projectile_type_static;
+						if(should_move) {
+							if(proj->going_right) {
+								proj->pos.x += 0.1f;
+							}
+							else {
+								proj->pos.x -= 0.1f;
+							}
+							if(proj->pos.x <= -c_wall_x + 2) {
+								proj->going_right = !proj->going_right;
+							}
+							else if(proj->pos.x >= c_wall_x - 2) {
+								proj->going_right = !proj->going_right;
+							}
 						}
 					}
 				}
@@ -2784,4 +2749,149 @@ func void do_leaderboard()
 			pos.y += 48;
 		}
 	}
+}
+
+func void init_obstacles()
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+	s_rng rng = make_rng(0);
+
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	{
+		int z = c_boost_z_start;
+		while(z < c_boost_z_end) {
+			if(chance100(&rng, c_boost_chance)) {
+				int count = rand_range_ii(&rng, 1, 5);
+				for(int i = 0; i < count; i += 1) {
+					s_speed_boost boost = zero;
+					boost.pos = v3(
+						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+					);
+					z += c_boost_z_step;
+					soft_data->speed_boost_arr.add(boost);
+				}
+			}
+			z += c_boost_z_step;
+		}
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+	{
+		int z = -10;
+		while(z > -190) {
+			if(chance100(&rng, 75)) {
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
+				);
+				proj.type = e_projectile_type_bounce;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				soft_data->projectile_arr.add(proj);
+			}
+			z -= 4;
+		}
+	}
+
+	{
+		int z = -210;
+		while(z > -390) {
+			if(chance100(&rng, 40)) {
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
+				);
+				proj.type = e_projectile_type_default;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				soft_data->projectile_arr.add(proj);
+			}
+			z -= 4;
+		}
+	}
+
+	{
+		int z = -410;
+		while(z > -590) {
+			if(chance100(&rng, 100)) {
+				constexpr float radius = 1.0f;
+				int gap = rand_range_ii(&rng, 4, 8);
+				float center_x = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+
+				s_list<float, 16> x_arr;
+
+				{
+					float x = center_x - gap;
+					while(x >= -c_wall_x + radius) {
+						x_arr.add(x);
+						x -= radius * 2;
+					}
+				}
+				{
+					float x = center_x + gap;
+					while(x <= c_wall_x - radius) {
+						x_arr.add(x);
+						x += radius * 2;
+					}
+				}
+
+				foreach_val(x_pos_i, x_pos, x_arr) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						x_pos, 0, z
+					);
+					proj.type = e_projectile_type_static;
+					proj.prev_pos = proj.pos;
+					proj.radius = radius;
+					proj.going_right = rand_bool(&rng);
+					soft_data->projectile_arr.add(proj);
+				}
+			}
+			z -= 10;
+		}
+	}
+
+	#if 0
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	{
+		int z = c_default_proj_z_start;
+		while(z < c_default_proj_z_end) {
+			if(chance100(&rng, c_default_proj_chance)) {
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+				);
+				proj.type = e_projectile_type_default;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				soft_data->projectile_arr.add(proj);
+				z += c_default_proj_z_step;
+			}
+			z += c_default_proj_z_step * 2;
+		}
+	}
+
+	{
+		int z = c_bounce_proj_z_start;
+		while(z < c_bounce_proj_z_end) {
+			if(chance100(&rng, c_bounce_proj_chance)) {
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+				);
+				proj.type = e_projectile_type_bounce;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				soft_data->projectile_arr.add(proj);
+				z += c_bounce_proj_z_step;
+			}
+			z += c_bounce_proj_z_step * 2;
+		}
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	#endif
 }

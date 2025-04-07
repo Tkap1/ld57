@@ -93,3 +93,4 @@ func void builder_insert(s_str_builder<n>* builder, int index, char c);
 template <int n>
 func void builder_remove_char_at(s_str_builder<n>* builder, int index);
 func void do_leaderboard();
+func void init_obstacles();

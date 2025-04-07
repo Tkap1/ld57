@@ -10,7 +10,7 @@
 template <typename t, int n>
 struct s_list
 {
-	int count;
+	int count = 0;
 	t data[n];
 
 	t& operator[](int index);
