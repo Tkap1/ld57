@@ -33,9 +33,7 @@ out vec4 out_color;
 
 void main()
 {
-	vec3 color = vec3(0.0);
-	// color = v_color.rgb;
-	color = vec3(texture(in_texture, v_uv).r) * v_color.rgb;
-	out_color = vec4(color, 1.0);
+	vec4 texture_color = texture(in_texture, v_uv);
+	out_color = texture_color * v_color;
 }
 #endif

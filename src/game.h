@@ -102,7 +102,6 @@ enum e_mesh
 {
 	e_mesh_quad,
 	e_mesh_cube,
-	e_mesh_monkey,
 	e_mesh_sphere,
 	e_mesh_count,
 };
@@ -155,23 +154,31 @@ struct s_text_iterator
 enum e_texture
 {
 	e_texture_white,
-	e_texture_shadow_map,
 	e_texture_noise,
 	e_texture_font,
+	e_texture_checkpoint,
 	e_texture_count
 };
 
 global constexpr char* c_texture_path_arr[e_texture_count] = {
-	"",
-	"",
+	"assets/white.png",
 	"assets/noise.png",
 	"",
+	"assets/checkpoint.png",
 };
 
 enum e_game_state
 {
 	e_game_state_default,
 	e_game_state_defeat,
+	e_game_state_pre_victory,
+	e_game_state_victory,
+};
+
+struct s_sound_data
+{
+	char* path;
+	u8 volume;
 };
 
 enum e_sound
@@ -181,13 +188,8 @@ enum e_sound
 	e_sound_clap,
 	e_sound_dash,
 	e_sound_knock,
+	e_sound_victory,
 	e_sound_count,
-};
-
-struct s_sound_data
-{
-	char* path;
-	u8 volume;
 };
 
 global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
@@ -196,6 +198,7 @@ global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
 	{"assets/clap.wav", 128},
 	{"assets/dash.wav", 48},
 	{"assets/knock.wav", 128},
+	{"assets/victory.wav", 128},
 };
 
 enum e_depth_mode
@@ -226,14 +229,6 @@ enum e_blend_mode
 	e_blend_mode_additive_no_alpha,
 };
 
-enum e_view_state
-{
-	e_view_state_default,
-	e_view_state_shadow_map,
-	e_view_state_curr_depth,
-	e_view_state_count,
-};
-
 #pragma pack(push, 1)
 struct s_ply_face
 {
@@ -259,6 +254,25 @@ struct s_ply_mesh
 	int face_count;
 	s_vertex vertex_arr[c_max_vertices];
 	s_ply_face face_arr[c_max_faces];
+};
+
+struct s_obj_face
+{
+	int vertex_index[3];
+	int normal_index[3];
+	int uv_index[3];
+};
+
+struct s_obj_mesh
+{
+	int vertex_count;
+	int normal_count;
+	int uv_count;
+	int face_count;
+	s_v3 pos_arr[c_max_vertices];
+	s_v3 normal_arr[c_max_vertices];
+	s_v2 uv_arr[c_max_vertices];
+	s_obj_face face_arr[c_max_faces];
 };
 
 #pragma pack(push, 1)
@@ -410,6 +424,13 @@ struct s_fct
 	s_v3 target_pos;
 };
 
+struct s_time_data
+{
+	float passed;
+	float percent;
+	float inv_percent;
+};
+
 struct s_particle_spawn_data
 {
 	float shrink;
@@ -438,6 +459,14 @@ struct s_particle
 	s_v4 color;
 };
 
+struct s_time_format
+{
+	int hours;
+	int minutes;
+	int seconds;
+	int milliseconds;
+};
+
 struct s_soft_game_data
 {
 	s_player player;
@@ -448,14 +477,17 @@ struct s_soft_game_data
 	int hovered_boost;
 	float defeat_timestamp;
 	s_list<s_particle, 4096> particle_arr;
+	float pre_victory_timestamp;
 };
 
 struct s_hard_game_data
 {
 	b8 display_checkpoint;
-	float highest_z;
+	float highest_z; // nocheckin delete
 	s_soft_game_data soft_data;
 	s_list<s_fct, 16> fct_arr;
+	int update_count;
+	int curr_checkpoint;
 };
 
 struct s_game
@@ -471,14 +503,13 @@ struct s_game
 	float update_time;
 	f64 accumulator;
 	f64 time_before;
-	s_fbo shadow_map_fbo;
 	u32 curr_fbo;
-	e_view_state view_state;
 	s_down_input down_input;
 	Mix_Chunk* sound_arr[e_sound_count];
 	int speed_index;
 	s_font font;
 	s_rng rng;
+	float speed;
 
 	b8 do_soft_reset;
 	b8 do_hard_reset;

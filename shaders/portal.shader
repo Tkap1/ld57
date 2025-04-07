@@ -46,6 +46,7 @@ void main()
 #if !defined(m_vertex)
 
 uniform sampler2D in_texture;
+uniform sampler2D noise;
 
 out vec4 out_color;
 
@@ -55,10 +56,25 @@ void main()
 	uv.x *= 16.0 / 9.0;
 	vec3 color = vec3(0.0);
 	float d = length(uv);
-	// float d = distance(vec2(0.5), uv);
+	float outter = smoothstep(0.2, 0.3, d);
+
+	vec2 dir[4] = vec2[](
+		vec2(render_time),
+		vec2(-render_time),
+		vec2(render_time, -render_time),
+		vec2(-render_time, render_time)
+	);
+
+	for(int i = 0; i < 8; i += 1) {
+		float n = texture(noise, v_uv * 0.5 + dir[i % 4] * 0.1 + vec2(sin(i * 123456789.0))).r;
+		n = max(n - pow(d, 0.5), 0.0);
+		float g = smoothstep(0.3, 0.5, d) * 5.0;
+		float b = smoothstep(0.4, 0.5, d) * 5.0;
+		color += vec3(1, g, 1 + b) * outter * n;
+	}
 	float a = smoothstep(0.5, 0.45, d);
-	color = v_color.rgb * a * v_color.a;
-	// color = vec3(v_uv.x, v_uv.y, 0.0);
-	out_color = vec4(color, 1);
+	// color = v_color.rgb * v_color.rgb * n;
+	// color = vec3(n);
+	out_color = vec4(color, a * v_color.a);
 }
 #endif

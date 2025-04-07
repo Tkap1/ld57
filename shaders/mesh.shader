@@ -22,17 +22,36 @@ void main()
 	vec3 vertex = vertex_pos;
 	gl_Position = projection * view * instance_model * vec4(vertex, 1);
 	v_color = vertex_color * instance_color;
-	v_normal = vertex_normal;
 	v_light_frag_pos = light_projection * light_view * instance_model * vec4(vertex, 1);
-	v_uv = vertex_uv;
+	// v_uv = vertex_uv;
 	v_frag_pos = (instance_model * vec4(vertex_pos, 1)).xyz;
+
+	vec2 uv;
+	if(abs(vertex_normal.x) > 0.9) {
+		uv = vec2(vertex_pos.y, vertex_pos.z) + 0.5;
+		if(vertex_normal.x < 0.0) { uv.x = 1.0 - uv.x; }
+		uv.y = 1.0 - uv.y;
+	}
+	else if(abs(vertex_normal.y) > 0.9) {
+		uv = vec2(vertex_pos.x, vertex_pos.z) + 0.5;
+		uv.y = 1.0 - uv.y;
+		if(vertex_normal.y > 0.0) { uv.x = 1.0 - uv.x; }
+	}
+	else {
+		uv = vec2(vertex_pos.x, vertex_pos.y) + 0.5;
+		if(vertex_normal.z > 0.0) { uv.y = 1.0 - uv.y; }
+	}
+
+	v_uv = uv;
+
+	mat3 normal_matrix = transpose(inverse(mat3(instance_model)));
+	v_normal = normalize(normal_matrix * vertex_normal);
 }
 #endif
 
 #if !defined(m_vertex)
 
 uniform sampler2D in_texture;
-uniform sampler2D shadow_map;
 
 out vec4 out_color;
 
@@ -42,22 +61,12 @@ void main()
 	// vec3 color = normal * 0.5 + 0.5;
 	vec3 color = vec3(0.0);
 
-	// vec3 light_frag_pos = v_light_frag_pos.xyz / v_light_frag_pos.w;
-	// float curr_depth = light_frag_pos.z * 0.5 + 0.5;
-	// vec2 temp = light_frag_pos.xy * 0.5 + 0.5;
-	// // temp.y = 1.0 - temp.y;
-	// float closest_depth = texture(shadow_map, temp).r;
-	// float shadow = 0.0f;
-	// float bias = 0.006;
-	// if(closest_depth + bias < curr_depth) {
-	// 	shadow = 0.75f;
-	// }
-	float shadow = 0.0;
-
 	vec3 light_dir = normalize(vec3(1.0, 1.0, -1.0));
 
+	vec4 texture_color = texture(in_texture, v_uv);
+
 	float d = max(0.0, dot(-light_dir, normal)) * 0.5 + 0.5;
-	color = v_color.rgb * d * (1.0 - shadow);
+	color = v_color.rgb * texture_color.rgb * d;
 
 	// color = vec3(d);
 	// color = vec3(curr_depth);

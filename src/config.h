@@ -17,6 +17,7 @@ global constexpr float c_game_speed_arr[] = {
 };
 
 global constexpr float c_bottom = 2000;
+global constexpr s_v3 c_goal_pos = {0.0f, 0.0f, -20.0f};
 
 global constexpr int c_boost_z_start = 10;
 global constexpr int c_boost_z_end = 1900;
@@ -32,3 +33,6 @@ global constexpr int c_default_proj_z_start = 200;
 global constexpr int c_default_proj_z_end = 600;
 global constexpr int c_default_proj_z_step = 9;
 global constexpr int c_default_proj_chance = 65;
+global constexpr int c_checkpoint_step = 200;
+
+global constexpr float c_pre_victory_duration = 2.0f;

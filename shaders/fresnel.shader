@@ -32,7 +32,6 @@ void main()
 #if !defined(m_vertex)
 
 uniform sampler2D in_texture;
-uniform sampler2D shadow_map;
 
 out vec4 out_color;
 
