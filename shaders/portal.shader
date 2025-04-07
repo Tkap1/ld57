@@ -23,17 +23,17 @@ void main()
 	m[1][1] = d;
 	m[2][2] = d;
 
-	m[0][1] = 0;
-	m[0][2] = 0;
-	m[0][3] = 0;
+	m[0][1] = 0.0;
+	m[0][2] = 0.0;
+	m[0][3] = 0.0;
 
-	m[1][0] = 0;
-	m[1][2] = 0;
-	m[1][3] = 0;
+	m[1][0] = 0.0;
+	m[1][2] = 0.0;
+	m[1][3] = 0.0;
 
-	m[2][0] = 0;
-	m[2][1] = 0;
-	m[2][3] = 0;
+	m[2][0] = 0.0;
+	m[2][1] = 0.0;
+	m[2][3] = 0.0;
 
 	vec3 vertex = vertex_pos;
 	gl_Position = m * vec4(vertex, 1);
@@ -65,12 +65,13 @@ void main()
 		vec2(-render_time, render_time)
 	);
 
-	for(int i = 0; i < 8; i += 1) {
-		float n = texture(noise, v_uv * 0.5 + dir[i % 4] * 0.1 + vec2(sin(i * 123456789.0))).r;
+	for(int ii = 0; ii < 8; ii += 1) {
+		float i = float(ii);
+		float n = texture(noise, v_uv * 0.5 + dir[ii % 4] * 0.1 + vec2(sin(i * 123456789.0))).r;
 		n = max(n - pow(d, 0.5), 0.0);
 		float g = smoothstep(0.3, 0.5, d) * 5.0;
 		float b = smoothstep(0.4, 0.5, d) * 5.0;
-		color += vec3(1, g, 1 + b) * outter * n;
+		color += vec3(1.0, g, 1.0 + b) * outter * n;
 	}
 	float a = smoothstep(0.5, 0.45, d);
 	// color = v_color.rgb * v_color.rgb * n;

@@ -61,14 +61,10 @@
 #include "tk_types.h"
 
 #if defined(m_debug)
-#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); __debugbreak(); }}
-#define assert(condition) if(!(condition)) { on_failed_assert(#condition, __FILE__, __LINE__); }
+#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); }}
 #else // m_debug
 #define gl(...) __VA_ARGS__
-#define assert(condition)
 #endif // m_debug
-
-func void on_failed_assert(char* condition, char* file, int line);
 
 #include "shared.h"
 #include "tk_arena.h"
@@ -89,7 +85,7 @@ global s_v2 g_mouse;
 
 #include "shared.cpp"
 
-void init(s_platform_data* platform_data)
+m_dll_export void init(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
@@ -113,11 +109,6 @@ void init(s_platform_data* platform_data)
 
 	platform_data->window_size.x = (int)c_world_size.x;
 	platform_data->window_size.y = (int)c_world_size.y;
-
-	SDL_SetMainReady();
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
-	Mix_OpenAudioDevice(44100, MIX_DEFAULT_FORMAT, 2, 512, NULL, 0);
-	Mix_Volume(-1, floorfi(MIX_MAX_VOLUME * 0.1f));
 
 	g_platform_data->window = SDL_CreateWindow(
 		"LD57", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -182,7 +173,7 @@ void init(s_platform_data* platform_data)
 	game->font = load_font_from_file("assets/Inconsolata-Regular.ttf", 64, &game->render_frame_arena);
 }
 
-void init_after_recompile(s_platform_data* platform_data)
+m_dll_export void init_after_recompile(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
@@ -204,7 +195,7 @@ EM_JS(int, browser_get_height, (), {
 });
 #endif // __EMSCRIPTEN__
 
-void do_game(s_platform_data* platform_data)
+m_dll_export void do_game(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
@@ -596,13 +587,12 @@ func void render(float interp_dt, float delta)
 	game->render_frame_arena.used = 0;
 
 	#if defined(_WIN32)
-	while(g_platform_data->hot_read_index < g_platform_data->hot_write_index) {
-		char* path = g_platform_data->hot_file_arr[g_platform_data->hot_read_index % c_max_hot_files];
-		printf("%s\n", path);
+	while(g_platform_data->hot_read_index[1] < g_platform_data->hot_write_index) {
+		char* path = g_platform_data->hot_file_arr[g_platform_data->hot_read_index[1] % c_max_hot_files];
 		if(strstr(path, ".shader")) {
 			game->reload_shaders = true;
 		}
-		g_platform_data->hot_read_index += 1;
+		g_platform_data->hot_read_index[1] += 1;
 	}
 	#endif // _WIN32
 
@@ -885,13 +875,6 @@ func void on_gl_error(const char* expr, char* file, int line, int error)
 	printf("GL ERROR: %s - %i (%s)\n", expr, error, error_str);
 	printf("  %s(%i)\n", file, line);
 	printf("--------\n");
-}
-
-func void on_failed_assert(char* condition, char* file, int line)
-{
-	printf("Failed assert at %s(%i)\n", file, line);
-	printf("\t%s\n", condition);
-	printf("-----------------------------\n");
 
 	#if defined(_WIN32)
 	__debugbreak();

@@ -16,25 +16,28 @@ set comp=!comp! -sSTACK_SIZE=1048576
 set comp=!comp! --shell-file ../shell.html
 set comp=!comp! -sFETCH
 set comp=!comp! -Dm_emscripten
+set comp=!comp! -Wbad-function-cast -Wcast-function-type
+set comp=!comp! --preload-file ../shaders@shaders
+set comp=!comp! --preload-file ../assets@assets
+set comp=!comp! --preload-file ../src/shader_shared.h@src/shader_shared.h
 
-set debug=1
+set debug=0
 if !debug!==0 (
 	set comp=!comp! -O3
+	set comp=!comp! -sSAFE_HEAP=0
+	set comp=!comp! -sASSERTIONS=0
 ) else (
-	@REM set comp=!comp! -Dm_debug
-	set comp=!comp! -O3
+	set comp=!comp! -Dm_debug
+	set comp=!comp! -O0
 	set comp=!comp! -sSAFE_HEAP=1
 	set comp=!comp! -sASSERTIONS=1
-	set comp=!comp! --preload-file ../shaders@shaders
-	set comp=!comp! --preload-file ../assets@assets
-	set comp=!comp! --preload-file ../src/shader_shared.h@src/shader_shared.h
-	@REM set comp=!comp! -gsource-map
+	set comp=!comp! -gsource-map
 	@REM set comp=!comp! -fsanitize=address
 )
 
 @REM -sFULL_ES3
 pushd build
-	call emcc ..\src\platform.cpp ..\src\game.cpp -Dm_sdl -sFULL_ES3 !comp! -std=c++20 -Wno-writable-strings -sUSE_SDL=2 -sUSE_WEBGL2=1 -sALLOW_MEMORY_GROWTH -o index.html -I"C:\Users\34687\Desktop\Dev\C\emsdk\upstream\emscripten\cache\sysroot\include"
+	call emcc ..\src\platform_emscripten.cpp ..\src\game.cpp -sFULL_ES3 !comp! -std=c++20 -Wno-writable-strings -sUSE_SDL=2 -sUSE_WEBGL2=1 -sALLOW_MEMORY_GROWTH -o index.html -I"C:\Users\34687\Desktop\Dev\C\emsdk\upstream\emscripten\cache\sysroot\include"
 popd
 
 copy build\index.html index.html > NUL

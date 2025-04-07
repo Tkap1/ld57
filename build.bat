@@ -10,7 +10,7 @@ SETLOCAL ENABLEDELAYEDEXPANSION
 func_decl_gen.exe src/*
 
 set game_file=..\src\game.cpp
-set platform_file=..\src\platform.cpp
+set platform_file=..\src\platform_win32.cpp
 set exe_name=main
 
 set comp=-nologo -std:c++20 -Zc:strictStrings- -Wall -FC -Gm- -GR- -EHa- -D_CRT_SECURE_NO_WARNINGS
@@ -41,19 +41,28 @@ if !debug!==2 (
 	set comp=!comp! -Od -Dm_debug
 )
 
+set build_dll=1
+
 pushd build
 
-	@REM cl !game_file! -LD -Fe!exe_name!.dll !comp! -link !linker! -PDB:game.pdb > temp_compiler_output.txt
-	@REM if NOT !ErrorLevel! == 0 (
-	@REM 	type temp_compiler_output.txt
-	@REM 	popd
-	@REM 	goto fail
-	@REM )
-	@REM type temp_compiler_output.txt
+	if !build_dll!==1 (
+		goto compile_dll
+	) else (
+		goto compile_full
+	)
 
-	@REM tasklist /fi "ImageName eq !exe_name!.exe" /fo csv 2>NUL | find /I "!exe_name!.exe">NUL
-	@REM if NOT !ERRORLEVEL!==0 (
-		cl !platform_file! !game_file! -Fe!exe_name!.exe !comp! -link !linker! -PDB:platform.pdb > temp_compiler_output.txt
+:compile_dll
+	cl !game_file! -LD -Fe!exe_name!.dll !comp! -link !linker! -PDB:game.pdb > temp_compiler_output.txt
+	if NOT !ErrorLevel! == 0 (
+		type temp_compiler_output.txt
+		popd
+		goto fail
+	)
+	type temp_compiler_output.txt
+
+	tasklist /fi "ImageName eq !exe_name!.exe" /fo csv 2>NUL | find /I "!exe_name!.exe">NUL
+	if NOT !ERRORLEVEL!==0 (
+		cl !platform_file! -Fe!exe_name!.exe !comp! -link !linker! -PDB:platform.pdb > temp_compiler_output.txt
 		if NOT !ErrorLevel! == 0 (
 			type temp_compiler_output.txt
 			popd
@@ -61,20 +70,30 @@ pushd build
 		)
 		type temp_compiler_output.txt
 	)
-	@REM )
+	popd
+	goto success
 
-popd
 
-if !errorlevel!==0 goto success
-goto fail
+:compile_full
+
+	cl !platform_file! !game_file! -Fe!exe_name!.exe !comp! -link !linker! -PDB:platform.pdb > temp_compiler_output.txt
+	if NOT !ErrorLevel! == 0 (
+		type temp_compiler_output.txt
+		popd
+		goto fail
+	)
+	type temp_compiler_output.txt
+	popd
+	goto success
+
 
 :success
-copy build\!exe_name!.exe !exe_name!.exe > NUL
-goto end
+	copy build\!exe_name!.exe !exe_name!.exe > NUL
+	copy build\!exe_name!.dll !exe_name!.dll > NUL
+	goto end
 
 :fail
+	goto end
 
 :end
 copy build\temp_compiler_output.txt compiler_output.txt > NUL
-
-:foo

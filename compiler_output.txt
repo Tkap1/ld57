@@ -1,4 +1,0 @@
-platform.cpp
-game.cpp
-Generating Code...
-   Creating library main.lib and object main.exp

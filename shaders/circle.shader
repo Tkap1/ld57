@@ -23,20 +23,20 @@ void main()
 	m[1][1] = d;
 	m[2][2] = d;
 
-	m[0][1] = 0;
-	m[0][2] = 0;
-	m[0][3] = 0;
+	m[0][1] = 0.0;
+	m[0][2] = 0.0;
+	m[0][3] = 0.0;
 
-	m[1][0] = 0;
-	m[1][2] = 0;
-	m[1][3] = 0;
+	m[1][0] = 0.0;
+	m[1][2] = 0.0;
+	m[1][3] = 0.0;
 
-	m[2][0] = 0;
-	m[2][1] = 0;
-	m[2][3] = 0;
+	m[2][0] = 0.0;
+	m[2][1] = 0.0;
+	m[2][3] = 0.0;
 
 	vec3 vertex = vertex_pos;
-	gl_Position = m * vec4(vertex, 1);
+	gl_Position = m * vec4(vertex, 1.0);
 	v_color = vertex_color * instance_color;
 	v_normal = vertex_normal;
 	v_uv = vertex_uv;
@@ -59,6 +59,6 @@ void main()
 	float a = smoothstep(0.5, 0.45, d);
 	color = v_color.rgb * a * v_color.a;
 	// color = vec3(v_uv.x, v_uv.y, 0.0);
-	out_color = vec4(color, 1);
+	out_color = vec4(color, 1.0);
 }
 #endif

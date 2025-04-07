@@ -98,6 +98,12 @@ m_gl_funcs
 #define invalid_default_case default: { assert(!"Invalid default case"); }
 #define invalid_else else { assert(!"Invalid else"); }
 
+#if defined(_WIN32)
+#define m_dll_export extern "C" __declspec(dllexport)
+#else // _WIN32
+#define m_dll_export
+#endif
+
 enum e_mesh
 {
 	e_mesh_quad,
@@ -197,7 +203,7 @@ global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
 	{"assets/defeat.wav", 128},
 	{"assets/clap.wav", 128},
 	{"assets/dash.wav", 48},
-	{"assets/knock.wav", 128},
+	{"assets/knock.wav", 255},
 	{"assets/victory.wav", 128},
 };
 
