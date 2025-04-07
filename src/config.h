@@ -50,13 +50,15 @@ global constexpr f64 c_update_delay = 1.0 / c_updates_per_second;
 global constexpr float c_wall_x = 10.0f;
 global constexpr float c_boost_radius = 1;
 global constexpr float c_player_radius = 1;
+global constexpr float c_teleporter_radius = 8;
+global constexpr float c_bottom = 2000;
+
 global constexpr float c_game_speed_arr[] = {
 	0.0f, 0.01f, 0.1f, 0.25f, 0.5f,
 	1,
 	2, 4, 8, 16
 };
 
-global constexpr float c_bottom = 2000;
 global constexpr s_v3 c_goal_pos = {0.0f, 0.0f, -c_bottom};
 
 global constexpr int c_boost_z_start = 10;
@@ -64,15 +66,6 @@ global constexpr int c_boost_z_end = 1900;
 global constexpr int c_boost_z_step = 9;
 global constexpr int c_boost_chance = 65;
 
-global constexpr int c_bounce_proj_z_start = 20;
-global constexpr int c_bounce_proj_z_end = 300;
-global constexpr int c_bounce_proj_z_step = 5;
-global constexpr int c_bounce_proj_chance = 70;
-
-global constexpr int c_default_proj_z_start = 200;
-global constexpr int c_default_proj_z_end = 600;
-global constexpr int c_default_proj_z_step = 9;
-global constexpr int c_default_proj_chance = 65;
 global constexpr int c_checkpoint_step = 200;
 
 global constexpr int c_max_keys = 1024;

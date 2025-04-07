@@ -561,6 +561,16 @@ func void update()
 			}
 			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		hit goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		teleporter collision start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			foreach_val(teleporter_i, teleporter, soft_data->teleporter_arr) {
+				if(sphere_vs_sphere(player->pos, c_player_radius, teleporter.pos, c_teleporter_radius * 0.25f)) {
+					player->pos = teleporter.destination;
+					player->prev_pos = player->pos;
+					play_sound(e_sound_portal);
+				}
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		teleporter collision end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		hit checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 			{
 				float z = c_checkpoint_step;
@@ -598,10 +608,11 @@ func void update()
 			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		hit checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 			if(soft_data->state == e_game_state1_default) {
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		projectile collision start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 				foreach_val(proj_i, proj, soft_data->projectile_arr) {
 					float generous_radius = proj.radius - 0.35f;
 					if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, generous_radius)) {
-						if(proj.type == e_projectile_type_default || proj.type == e_projectile_type_static) {
+						if(proj.type == e_projectile_type_default || proj.type == e_projectile_type_static || proj.type == e_projectile_type_follow) {
 							soft_data->state = e_game_state1_defeat;
 							soft_data->defeat_timestamp = game->update_time;
 							play_sound(e_sound_defeat);
@@ -618,6 +629,7 @@ func void update()
 						}
 					}
 				}
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		projectile collision end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 			}
 
 			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		update projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -625,7 +637,7 @@ func void update()
 				foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
 					proj->prev_pos = proj->pos;
 					if(update_entities) {
-						b8 should_move = proj->type != e_projectile_type_static;
+						b8 should_move = proj->type != e_projectile_type_static && proj->type != e_projectile_type_follow;
 						if(should_move) {
 							if(proj->going_right) {
 								proj->pos.x += 0.1f;
@@ -638,6 +650,23 @@ func void update()
 							}
 							else if(proj->pos.x >= c_wall_x - 2) {
 								proj->going_right = !proj->going_right;
+							}
+						}
+						if(proj->type == e_projectile_type_follow) {
+							if(proj->start_follow_timestamp > 0) {
+								s_v3 dir = v3_normalized(player->pos - proj->pos);
+								proj->pos += dir * 0.05f;
+								s_time_data time_data = get_time_data(game->update_time, proj->start_follow_timestamp, 3.0f);
+								if(time_data.percent >= 1) {
+									soft_data->projectile_arr.remove_and_swap(proj_i);
+									proj_i -= 1;
+								}
+							}
+							else {
+								float d = v3_distance(player->pos, proj->pos);
+								if(d <= 15) {
+									proj->start_follow_timestamp = game->update_time;
+								}
 							}
 						}
 					}
@@ -737,7 +766,7 @@ func void render(float interp_dt, float delta)
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		main menu start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		case e_game_state0_main_menu: {
 
-			if(do_button(S("Play"), wxy(0.5f, 0.5f), true)) {
+			if(do_button(S("Play"), wxy(0.5f, 0.5f), true) || is_key_pressed(SDLK_RETURN, true)) {
 				set_state0_next_frame(e_game_state0_play);
 				game->do_hard_reset = true;
 			}
@@ -872,11 +901,7 @@ func void render(float interp_dt, float delta)
 								s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
 								s_m4 model = m4_translate(proj_pos);
 								scale_m4_by_radius(&model, proj.radius);
-								s_v4 color = make_color(1.0f, 0.1f, 0.1f);
-								if(proj.type == e_projectile_type_bounce) {
-									color = make_color(0.1f, 0.1f, 1.0f);
-								}
-								draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
+								draw_mesh(e_mesh_sphere, model, proj.color, e_shader_fresnel);
 							}
 						}
 						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -928,6 +953,24 @@ func void render(float interp_dt, float delta)
 					}
 					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw teleporters start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					foreach_val(teleporter_i, teleporter, soft_data->teleporter_arr) {
+						{
+							s_instance_data data = zero;
+							data.model = m4_translate(teleporter.pos);
+							scale_m4_by_radius(&data.model, c_teleporter_radius);
+							data.color = make_color(1);
+							add_to_render_group(data, e_shader_teleporter, e_texture_white, e_mesh_quad);
+						}
+						{
+							s_instance_data data = zero;
+							data.model = m4_translate(teleporter.destination);
+							scale_m4_by_radius(&data.model, c_teleporter_radius);
+							data.color = make_color(1);
+							add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
+						}
+					}
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw teleporters end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 					if(fabsf(cam_pos.z - c_goal_pos.z) < 100) {
@@ -938,19 +981,19 @@ func void render(float interp_dt, float delta)
 							data.color = make_color(1);
 							add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
 						}
-
-						{
-							s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
-							data.projection = perspective;
-							data.view = view;
-							data.light_projection = light_projection;
-							data.light_view = light_view;
-							data.blend_mode = e_blend_mode_normal;
-							data.depth_mode = e_depth_mode_no_read_no_write;
-							render_flush(data, true);
-						}
 					}
 					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+					{
+						s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
+						data.projection = perspective;
+						data.view = view;
+						data.light_projection = light_projection;
+						data.light_view = light_view;
+						data.blend_mode = e_blend_mode_normal;
+						data.depth_mode = e_depth_mode_no_read_no_write;
+						render_flush(data, true);
+					}
 
 					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 					{
@@ -1023,6 +1066,13 @@ func void render(float interp_dt, float delta)
 							draw_text(text, pos, font_size, make_color(1), false, &game->font);
 							pos.y += font_size;
 						}
+						#if defined(m_debug)
+						{
+							s_len_str text = format_text("FPS: %i", roundfi(1.0f / delta));
+							draw_text(text, pos, font_size, make_color(1), false, &game->font);
+							pos.y += font_size;
+						}
+						#endif // m_debug
 					}
 
 					{
@@ -2788,6 +2838,7 @@ func void init_obstacles()
 				proj.prev_pos = proj.pos;
 				proj.radius = randf_range(&rng, 0.5f, 1.5f);
 				proj.going_right = rand_bool(&rng);
+				proj.color = make_color(0.1f, 0.1f, 1.0f);
 				soft_data->projectile_arr.add(proj);
 			}
 			z -= 4;
@@ -2806,6 +2857,7 @@ func void init_obstacles()
 				proj.prev_pos = proj.pos;
 				proj.radius = randf_range(&rng, 0.5f, 1.5f);
 				proj.going_right = rand_bool(&rng);
+				proj.color = make_color(1.0f, 0.1f, 0.1f);
 				soft_data->projectile_arr.add(proj);
 			}
 			z -= 4;
@@ -2845,7 +2897,7 @@ func void init_obstacles()
 					proj.type = e_projectile_type_static;
 					proj.prev_pos = proj.pos;
 					proj.radius = radius;
-					proj.going_right = rand_bool(&rng);
+					proj.color = hex_to_rgb(0xA18594);
 					soft_data->projectile_arr.add(proj);
 				}
 			}
@@ -2853,45 +2905,56 @@ func void init_obstacles()
 		}
 	}
 
-	#if 0
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		int z = c_default_proj_z_start;
-		while(z < c_default_proj_z_end) {
-			if(chance100(&rng, c_default_proj_chance)) {
+		int z = -610;
+		while(z > -790) {
+			if(chance100(&rng, 40)) {
 				s_projectile proj = zero;
 				proj.pos = v3(
-					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
 				);
-				proj.type = e_projectile_type_default;
+				proj.type = e_projectile_type_follow;
 				proj.prev_pos = proj.pos;
-				proj.radius = randf_range(&rng, 0.5f, 1.5f);
-				proj.going_right = rand_bool(&rng);
+				proj.radius = 2.0f;
+				proj.color = hex_to_rgb(0xFAD201);
 				soft_data->projectile_arr.add(proj);
-				z += c_default_proj_z_step;
 			}
-			z += c_default_proj_z_step * 2;
+			z -= 4;
 		}
 	}
 
 	{
-		int z = c_bounce_proj_z_start;
-		while(z < c_bounce_proj_z_end) {
-			if(chance100(&rng, c_bounce_proj_chance)) {
-				s_projectile proj = zero;
-				proj.pos = v3(
-					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-				);
-				proj.type = e_projectile_type_bounce;
-				proj.prev_pos = proj.pos;
-				proj.radius = randf_range(&rng, 0.5f, 1.5f);
-				proj.going_right = rand_bool(&rng);
-				soft_data->projectile_arr.add(proj);
-				z += c_bounce_proj_z_step;
+		int z = -820;
+		while(z > -980) {
+			if(chance100(&rng, 100)) {
+				constexpr float radius = 1.0f;
+
+				{
+					float x = -c_wall_x + radius * 2;
+					while(x <= c_wall_x - radius * 2) {
+						s_projectile proj = zero;
+						proj.pos = v3(
+							x, 0, z
+						);
+						proj.type = e_projectile_type_static;
+						proj.prev_pos = proj.pos;
+						proj.radius = radius;
+						proj.color = hex_to_rgb(0x781F19);
+						soft_data->projectile_arr.add(proj);
+						x += radius * 2;
+					}
+				}
+				{
+					s_teleporter teleporter = zero;
+					float x_pos = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+					float x_destination = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+					teleporter.pos = v3(x_pos, 0.0f, z + 5);
+					teleporter.destination = v3(x_destination, 0.0f, z - 5);
+					soft_data->teleporter_arr.add(teleporter);
+				}
 			}
-			z += c_bounce_proj_z_step * 2;
+			z -= 20;
 		}
 	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-	#endif
+
 }

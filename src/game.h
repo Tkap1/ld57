@@ -124,6 +124,7 @@ enum e_shader
 	e_shader_button,
 	e_shader_text,
 	e_shader_background,
+	e_shader_teleporter,
 	e_shader_count,
 };
 
@@ -138,6 +139,7 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/button.shader",
 	"shaders/text.shader",
 	"shaders/background.shader",
+	"shaders/teleporter.shader",
 };
 
 struct s_text_iterator
@@ -189,6 +191,7 @@ enum e_sound
 	e_sound_click,
 	e_sound_key,
 	e_sound_checkpoint,
+	e_sound_portal,
 	e_sound_count,
 };
 
@@ -202,6 +205,7 @@ global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
 	{"assets/click.wav", 128},
 	{"assets/key.wav", 128},
 	{"assets/checkpoint.wav", 128},
+	{"assets/portal.wav", 64},
 };
 
 enum e_depth_mode
@@ -409,15 +413,24 @@ enum e_projectile_type
 	e_projectile_type_default,
 	e_projectile_type_bounce,
 	e_projectile_type_static,
+	e_projectile_type_follow,
+};
+
+struct s_teleporter
+{
+	s_v3 pos;
+	s_v3 destination;
 };
 
 struct s_projectile
 {
+	float start_follow_timestamp;
 	e_projectile_type type;
 	b8 going_right;
 	float radius;
 	s_v3 prev_pos;
 	s_v3 pos;
+	s_v4 color;
 };
 
 struct s_time_data
@@ -514,7 +527,8 @@ struct s_soft_game_data
 {
 	s_player player;
 	s_list<s_speed_boost, 1024> speed_boost_arr;
-	s_list<s_projectile, 1024> projectile_arr;
+	s_list<s_projectile, 4096> projectile_arr;
+	s_list<s_teleporter, 64> teleporter_arr;
 	e_game_state1 state;
 	float want_dash_timestamp;
 	int hovered_boost;

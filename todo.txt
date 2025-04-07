@@ -2,5 +2,9 @@ finish winning
 finish checkpoint system
 limit delta
 
+garbage frame on restart
+
 polish:
 	some effect when checkpoint is hit
+	follow balls shrink?
+	smooth camera?
