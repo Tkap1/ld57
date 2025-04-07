@@ -1108,3 +1108,11 @@ static float sin_range(float min_val, float max_val, float x)
 {
 	return lerp(min_val, max_val, sinf(x) * 0.5f + 0.5f);
 }
+
+func s_v2 v2_from_angle(float angle)
+{
+	s_v2 result = zero;
+	result.x = cosf(angle);
+	result.y = sinf(angle);
+	return result;
+}

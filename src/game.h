@@ -414,6 +414,7 @@ enum e_projectile_type
 	e_projectile_type_bounce,
 	e_projectile_type_static,
 	e_projectile_type_follow,
+	e_projectile_type_diagonal,
 };
 
 struct s_teleporter
@@ -430,6 +431,7 @@ struct s_projectile
 	float radius;
 	s_v3 prev_pos;
 	s_v3 pos;
+	s_v3 dir;
 	s_v4 color;
 };
 

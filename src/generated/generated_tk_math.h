@@ -63,3 +63,4 @@ func s_v2 lerp_snap(s_v2 a, s_v2 b, float t);
 func s_v2 lerp_snap(s_v2 a, s_v2 b, float t, s_v2 max_diff);
 func float v2_distance(s_v2 a, s_v2 b);
 func float v2_length(s_v2 a);
+func s_v2 v2_from_angle(float angle);

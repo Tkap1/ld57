@@ -94,3 +94,5 @@ template <int n>
 func void builder_remove_char_at(s_str_builder<n>* builder, int index);
 func void do_leaderboard();
 func void init_obstacles();
+func b8 sphere_out_of_bounds_left(s_v3 pos, float radius);
+func b8 sphere_out_of_bounds_right(s_v3 pos, float radius);

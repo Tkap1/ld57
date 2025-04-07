@@ -612,7 +612,10 @@ func void update()
 				foreach_val(proj_i, proj, soft_data->projectile_arr) {
 					float generous_radius = proj.radius - 0.35f;
 					if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, generous_radius)) {
-						if(proj.type == e_projectile_type_default || proj.type == e_projectile_type_static || proj.type == e_projectile_type_follow) {
+						if(
+							proj.type == e_projectile_type_default || proj.type == e_projectile_type_static || proj.type == e_projectile_type_follow ||
+							proj.type == e_projectile_type_diagonal
+						) {
 							soft_data->state = e_game_state1_defeat;
 							soft_data->defeat_timestamp = game->update_time;
 							play_sound(e_sound_defeat);
@@ -637,7 +640,8 @@ func void update()
 				foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
 					proj->prev_pos = proj->pos;
 					if(update_entities) {
-						b8 should_move = proj->type != e_projectile_type_static && proj->type != e_projectile_type_follow;
+						b8 should_move = proj->type != e_projectile_type_static && proj->type != e_projectile_type_follow &&
+							proj->type != e_projectile_type_diagonal;
 						if(should_move) {
 							if(proj->going_right) {
 								proj->pos.x += 0.1f;
@@ -667,6 +671,17 @@ func void update()
 								if(d <= 15) {
 									proj->start_follow_timestamp = game->update_time;
 								}
+							}
+						}
+						if(proj->type == e_projectile_type_diagonal) {
+							proj->pos += proj->dir * 0.2f;
+							if(sphere_out_of_bounds_right(proj->pos, proj->radius)) {
+								proj->pos.x = c_wall_x - proj->radius * 2;
+								proj->dir *= -1;
+							}
+							else if(sphere_out_of_bounds_left(proj->pos, proj->radius)) {
+								proj->pos.x = -c_wall_x + proj->radius * 2;
+								proj->dir *= -1;
 							}
 						}
 					}
@@ -2957,4 +2972,73 @@ func void init_obstacles()
 		}
 	}
 
+	{
+		int z = -1010;
+		while(z > -1190) {
+			if(chance100(&rng, 45)) {
+				float radius = randf_range(&rng, 1.0f, 1.2f);
+				float x = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+				s_projectile proj = zero;
+				proj.pos = v3(x, 0, z);
+				proj.type = e_projectile_type_diagonal;
+				proj.prev_pos = proj.pos;
+				proj.radius = radius;
+				proj.color = hex_to_rgb(0x3E5F8A);
+				float angle = randf_range(&rng, -c_pi * 0.25f, c_pi * 0.25f);
+				s_v2 dir = v2_from_angle(angle);
+				if(rand_bool(&rng)) {
+					dir *= -1;
+				}
+				proj.dir = v3(dir.x, 0.0f, dir.y);
+				soft_data->projectile_arr.add(proj);
+			}
+			z -= 5;
+		}
+	}
+
+	{
+		int z = -1210;
+		while(z > -1390) {
+			if(chance100(&rng, 50)) {
+
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
+				);
+				proj.type = e_projectile_type_bounce;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				proj.color = make_color(0.1f, 0.1f, 1.0f);
+				soft_data->projectile_arr.add(proj);
+
+			}
+			else if(chance100(&rng, 50)) {
+
+				s_projectile proj = zero;
+				proj.pos = v3(
+					-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
+				);
+				proj.type = e_projectile_type_default;
+				proj.prev_pos = proj.pos;
+				proj.radius = randf_range(&rng, 0.5f, 1.5f);
+				proj.going_right = rand_bool(&rng);
+				proj.color = make_color(1.0f, 0.1f, 0.1f);
+				soft_data->projectile_arr.add(proj);
+			}
+			z -= 5;
+		}
+	}
+}
+
+func b8 sphere_out_of_bounds_left(s_v3 pos, float radius)
+{
+	b8 result = pos.x < -c_wall_x + radius * 2;
+	return result;
+}
+
+func b8 sphere_out_of_bounds_right(s_v3 pos, float radius)
+{
+	b8 result = pos.x > c_wall_x - radius * 2;
+	return result;
 }
