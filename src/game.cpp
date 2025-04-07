@@ -667,175 +667,247 @@ func void render(float interp_dt, float delta)
 		game->speed = range_lerp(slow, 0, 1, 1, 0.1f);
 	}
 
+	clear_framebuffer_depth(0);
+	clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		draw_game(ray, interp_dt);
-		s_render_flush_data data = make_render_flush_data(cam_pos);
-		data.projection = perspective;
-		data.view = view;
-		data.light_projection = light_projection;
-		data.light_view = light_view;
-		clear_framebuffer_depth(0);
-		clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
-		render_flush(data, true);
-	}
+	switch(soft_data->state) {
+		case e_game_state_default:
+		case e_game_state_pre_victory:
+		case e_game_state_defeat: {
 
-	if(fabsf(cam_pos.z - c_goal_pos.z) < 100) {
-		{
-			// nocheckin
-			s_instance_data data = zero;
-			data.model = m4_translate(v3(0.0f, 0.0f, c_goal_pos.z));
-			scale_m4_by_radius(&data.model, 20);
-			data.color = make_color(1);
-			// add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
-		}
-
-		{
-			s_render_flush_data data = make_render_flush_data(cam_pos);
-			data.projection = perspective;
-			data.view = view;
-			data.light_projection = light_projection;
-			data.light_view = light_view;
-			data.blend_mode = e_blend_mode_normal;
-			data.depth_mode = e_depth_mode_no_read_no_write;
-			render_flush(data, true);
-		}
-	}
-
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		// s_particle_spawn_data data = zero;
-		// data.duration = 1.0f;
-		// data.duration_rand = 1.0f;
-		// spawn_particles(1, ray_at_y(ray, 0.0f), data);
-	}
-
-	{
-		s_particle_spawn_data data = zero;
-		data.shrink = 0.5f;
-		data.duration = 0.5f;
-		data.duration_rand = 0.5f;
-		data.radius = 1.5f;
-		data.radius_rand = 0.25f;
-		data.color = hex_to_rgb(0xFAD201);
-		data.color_rand = 1.0f;
-		data.dir = v3(0.5f, 1, 1.0f);
-		data.dir_rand = v3(1);
-		data.speed = 0.01f;
-		data.speed_rand = 0.5f;
-
-		s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
-		spawn_particles(1, player_pos + pos, data);
-	}
-
-	{
-		s_particle_spawn_data data = zero;
-		data.shrink = 0.5f;
-		data.duration = 0.5f;
-		data.duration_rand = 0.5f;
-		data.radius = 1.5f;
-		data.radius_rand = 0.25f;
-		data.color = hex_to_rgb(0x0);
-		data.dir = v3(0.5f, 1, 1.0f);
-		data.dir_rand = v3(1);
-		data.speed = 0.01f;
-		data.speed_rand = 0.5f;
-
-		spawn_particles(4, ray_at_y(ray, 0.0f), data);
-	}
-
-	update_particles();
-	{
-		s_render_flush_data data = make_render_flush_data(cam_pos);
-		data.projection = perspective;
-		data.view = view;
-		data.blend_mode = e_blend_mode_additive;
-		data.depth_mode = e_depth_mode_read_no_write;
-		render_flush(data, true);
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		particles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
-		s_render_flush_data data = make_render_flush_data(cam_pos);
-		data.projection = ortho;
-		data.blend_mode = e_blend_mode_normal;
-		data.depth_mode = e_depth_mode_no_read_no_write;
-		render_flush(data, true);
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		post end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		fct start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-
-	// 	foreach_ptr(fct_i, fct, hard_data->fct_arr) {
-	// 		float passed = at_most(1.0f, game->render_time - fct->spawn_timestamp);
-	// 		fct->pos = lerp_v3(fct->start_pos, fct->target_pos, passed);
-	// 		draw_text_world(fct->text, fct->pos, 1.0f, make_color(1), true, &game->font);
-	// 	}
-
-	// 	s_render_flush_data data = make_render_flush_data(cam_pos);
-	// 	data.projection = perspective;
-	// 	data.view = view;
-	// 	data.blend_mode = e_blend_mode_normal;
-	// 	data.depth_mode = e_depth_mode_no_read_no_write;
-	// 	render_flush(data, true);
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		fct end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-
-	{
-		{
-			s_v2 pos = v2(4);
-			constexpr float font_size = 48;
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 			{
-				s_time_format format = update_count_to_time_format(hard_data->update_count);
-				s_len_str text = format_text("%02d:%02d:%02d.%i", format.hours, format.minutes, format.seconds, format.milliseconds);
-				draw_text(text, pos, font_size, make_color(1), false, &game->font);
-				pos.y += font_size;
+				s_v3 ray_p = ray_at_y(ray, 0.0f);
+
+				for(int i = 0; i < 20; i += 1) {
+					int vertical_index = ceilfi((player_pos.z + 10) / 2);
+					float z = vertical_index * 2.0f;
+					z -= i * 2.0f;
+					s_v4 color = make_color((vertical_index + i) & 1 ? 0.5f : 1.0f);
+					{
+						s_m4 model = m4_translate(v3(-c_wall_x, 0.0f, z));
+						model = m4_multiply(model, m4_scale(v3(2.0f)));
+						draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+					}
+					{
+						s_m4 model = m4_translate(v3(c_wall_x, 0.0f, z));
+						model = m4_multiply(model, m4_scale(v3(2.0f)));
+						draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+					}
+				}
+
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+				{
+					foreach_val(proj_i, proj, soft_data->projectile_arr) {
+						s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
+						s_m4 model = m4_translate(proj_pos);
+						scale_m4_by_radius(&model, proj.radius);
+						s_v4 color = make_color(1.0f, 0.1f, 0.1f);
+						if(proj.type == e_projectile_type_bounce) {
+							color = make_color(0.1f, 0.1f, 1.0f);
+						}
+						draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
+					}
+				}
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+				soft_data->hovered_boost = -1;
+				foreach_val(boost_i, boost, soft_data->speed_boost_arr) {
+					s_m4 model = m4_translate(boost.pos);
+					scale_m4_by_radius(&model, c_boost_radius);
+					s_v4 color = make_color(0.1f, 1, 0.1f);
+					if(is_boost_hovered(ray_p, boost.pos)) {
+						color = make_color(0.5f, 1, 0.5f);
+						soft_data->hovered_boost = boost_i;
+					}
+					draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
+				}
+
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+				{
+					float z = 10;
+					while(z < c_bottom) {
+						s_instance_data data = zero;
+						data.model = m4_translate(v3(0.0f, 0.0f, -z));
+						data.model = m4_multiply(data.model, m4_rotate(game->render_time, v3(0, 0, 1)));
+						data.model = m4_multiply(data.model, m4_scale(v3(3)));
+						data.color = make_color(1);
+						add_to_render_group(data, e_shader_mesh, e_texture_checkpoint, e_mesh_cube);
+						z += c_checkpoint_step;
+					}
+				}
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw player start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+				{
+					s_m4 model = m4_translate(player_pos);
+					scale_m4_by_radius(&model, c_player_radius);
+					draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
+				}
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw player end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+				{
+					s_render_flush_data data = make_render_flush_data(cam_pos);
+					data.projection = perspective;
+					data.view = view;
+					data.light_projection = light_projection;
+					data.light_view = light_view;
+					render_flush(data, true);
+				}
+
 			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			if(fabsf(cam_pos.z - c_goal_pos.z) < 100) {
+				{
+					// nocheckin
+					s_instance_data data = zero;
+					data.model = m4_translate(v3(0.0f, 0.0f, c_goal_pos.z));
+					scale_m4_by_radius(&data.model, 20);
+					data.color = make_color(1);
+					// add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
+				}
+
+				{
+					s_render_flush_data data = make_render_flush_data(cam_pos);
+					data.projection = perspective;
+					data.view = view;
+					data.light_projection = light_projection;
+					data.light_view = light_view;
+					data.blend_mode = e_blend_mode_normal;
+					data.depth_mode = e_depth_mode_no_read_no_write;
+					render_flush(data, true);
+				}
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 			{
-				s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
-				draw_text(text, pos, font_size, make_color(1), false, &game->font);
-				pos.y += font_size;
+				s_particle_spawn_data data = zero;
+				data.shrink = 0.5f;
+				data.duration = 0.5f;
+				data.duration_rand = 0.5f;
+				data.radius = 1.5f;
+				data.radius_rand = 0.25f;
+				data.color = hex_to_rgb(0xFAD201);
+				data.color_rand = 1.0f;
+				data.dir = v3(0.5f, 1, 1.0f);
+				data.dir_rand = v3(1);
+				data.speed = 0.01f;
+				data.speed_rand = 0.5f;
+
+				s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
+				spawn_particles(1, player_pos + pos, data);
 			}
+
+			{
+				s_particle_spawn_data data = zero;
+				data.shrink = 0.5f;
+				data.duration = 0.5f;
+				data.duration_rand = 0.5f;
+				data.radius = 1.5f;
+				data.radius_rand = 0.25f;
+				data.color = hex_to_rgb(0x0);
+				data.dir = v3(0.5f, 1, 1.0f);
+				data.dir_rand = v3(1);
+				data.speed = 0.01f;
+				data.speed_rand = 0.5f;
+
+				spawn_particles(4, ray_at_y(ray, 0.0f), data);
+			}
+
+			update_particles();
+			{
+				s_render_flush_data data = make_render_flush_data(cam_pos);
+				data.projection = perspective;
+				data.view = view;
+				data.blend_mode = e_blend_mode_additive;
+				data.depth_mode = e_depth_mode_read_no_write;
+				render_flush(data, true);
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		particles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			{
+				draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
+				s_render_flush_data data = make_render_flush_data(cam_pos);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		post end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		fct start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			{
+			// 	foreach_ptr(fct_i, fct, hard_data->fct_arr) {
+			// 		float passed = at_most(1.0f, game->render_time - fct->spawn_timestamp);
+			// 		fct->pos = lerp_v3(fct->start_pos, fct->target_pos, passed);
+			// 		draw_text_world(fct->text, fct->pos, 1.0f, make_color(1), true, &game->font);
+			// 	}
+
+			// 	s_render_flush_data data = make_render_flush_data(cam_pos);
+			// 	data.projection = perspective;
+			// 	data.view = view;
+			// 	data.blend_mode = e_blend_mode_normal;
+			// 	data.depth_mode = e_depth_mode_no_read_no_write;
+			// 	render_flush(data, true);
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		fct end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			{
+				s_v2 pos = v2(4);
+				constexpr float font_size = 48;
+				{
+					s_time_format format = update_count_to_time_format(hard_data->update_count);
+					s_len_str text = format_text("%02d:%02d:%02d.%i", format.hours, format.minutes, format.seconds, format.milliseconds);
+					draw_text(text, pos, font_size, make_color(1), false, &game->font);
+					pos.y += font_size;
+				}
+				{
+					s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
+					draw_text(text, pos, font_size, make_color(1), false, &game->font);
+					pos.y += font_size;
+				}
+			}
+
+			{
+				s_render_flush_data data = make_render_flush_data(cam_pos);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
+
+			if(soft_data->state == e_game_state_pre_victory) {
+				{
+					s_time_data time_data = get_time_data(
+						game->render_time, soft_data->pre_victory_timestamp, c_pre_victory_duration
+					);
+					if(time_data.percent >= 1) {
+						soft_data->state = e_game_state_victory;
+					}
+					s_instance_data data = zero;
+					data.model = fullscreen_m4();
+					data.color = make_color(0, time_data.percent);
+					add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
+				}
+				{
+					s_render_flush_data data = make_render_flush_data(cam_pos);
+					data.projection = ortho;
+					data.blend_mode = e_blend_mode_normal;
+					data.depth_mode = e_depth_mode_no_read_no_write;
+					render_flush(data, true);
+				}
 		}
 
-		{
-			s_render_flush_data data = make_render_flush_data(cam_pos);
-			data.projection = ortho;
-			data.blend_mode = e_blend_mode_normal;
-			data.depth_mode = e_depth_mode_no_read_no_write;
-			render_flush(data, true);
-		}
-	}
+		} break;
 
-	if(soft_data->state == e_game_state_pre_victory) {
-		{
-			s_time_data time_data = get_time_data(
-				game->render_time, soft_data->pre_victory_timestamp, c_pre_victory_duration
-			);
-			if(time_data.percent >= 1) {
-				soft_data->state = e_game_state_pre_victory;
-			}
-			s_instance_data data = zero;
-			data.model = fullscreen_m4();
-			data.color = make_color(0, time_data.percent);
-			add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
-		}
-		{
-			s_render_flush_data data = make_render_flush_data(cam_pos);
-			data.projection = ortho;
-			data.blend_mode = e_blend_mode_normal;
-			data.depth_mode = e_depth_mode_no_read_no_write;
-			render_flush(data, true);
-		}
+		case e_game_state_victory: {
+
+		} break;
 	}
 
 
@@ -1464,83 +1536,6 @@ func void set_blend_mode(e_blend_mode mode)
 		} break;
 		invalid_default_case;
 	}
-}
-
-func void draw_game(s_ray ray, float interp_dt)
-{
-
-	s_hard_game_data* hard_data = &game->hard_data;
-	s_soft_game_data* soft_data = &hard_data->soft_data;
-	s_player* player = &soft_data->player;
-
-	s_v3 ray_p = ray_at_y(ray, 0.0f);
-	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
-
-	for(int i = 0; i < 20; i += 1) {
-		int vertical_index = ceilfi((player_pos.z + 10) / 2);
-		float z = vertical_index * 2.0f;
-		z -= i * 2.0f;
-		s_v4 color = make_color((vertical_index + i) & 1 ? 0.5f : 1.0f);
-		{
-			s_m4 model = m4_translate(v3(-c_wall_x, 0.0f, z));
-			model = m4_multiply(model, m4_scale(v3(2.0f)));
-			draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
-		}
-		{
-			s_m4 model = m4_translate(v3(c_wall_x, 0.0f, z));
-			model = m4_multiply(model, m4_scale(v3(2.0f)));
-			draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
-		}
-	}
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		foreach_val(proj_i, proj, soft_data->projectile_arr) {
-			s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
-			s_m4 model = m4_translate(proj_pos);
-			scale_m4_by_radius(&model, proj.radius);
-			s_v4 color = make_color(1.0f, 0.1f, 0.1f);
-			if(proj.type == e_projectile_type_bounce) {
-				color = make_color(0.1f, 0.1f, 1.0f);
-			}
-			draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
-		}
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	soft_data->hovered_boost = -1;
-	foreach_val(boost_i, boost, soft_data->speed_boost_arr) {
-		s_m4 model = m4_translate(boost.pos);
-		scale_m4_by_radius(&model, c_boost_radius);
-		s_v4 color = make_color(0.1f, 1, 0.1f);
-		if(is_boost_hovered(ray_p, boost.pos)) {
-			color = make_color(0.5f, 1, 0.5f);
-			soft_data->hovered_boost = boost_i;
-		}
-		draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
-	}
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		float z = 10;
-		while(z < c_bottom) {
-			s_instance_data data = zero;
-			data.model = m4_translate(v3(0.0f, 0.0f, -z));
-			data.model = m4_multiply(data.model, m4_rotate(game->render_time, v3(0, 0, 1)));
-			data.model = m4_multiply(data.model, m4_scale(v3(3)));
-			data.color = make_color(1);
-			add_to_render_group(data, e_shader_mesh, e_texture_checkpoint, e_mesh_cube);
-			z += c_checkpoint_step;
-		}
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	{
-		s_m4 model = m4_translate(player_pos);
-		scale_m4_by_radius(&model, c_player_radius);
-		draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
-	}
-
 }
 
 template <typename t>

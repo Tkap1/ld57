@@ -24,7 +24,6 @@ func s_mesh make_mesh_from_obj_file(char* file, s_linear_arena* arena);
 func void set_cull_mode(e_cull_mode mode);
 func void set_depth_mode(e_depth_mode mode);
 func void set_blend_mode(e_blend_mode mode);
-func void draw_game(s_ray ray, float interp_dt);
 template <typename t>
 func void toggle(t* out, t a, t b);
 func b8 is_boost_hovered(s_v3 mouse_point, s_v3 boost_pos);
