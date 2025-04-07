@@ -362,6 +362,9 @@ func void input()
 				if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == 1) {
 					g_click = true;
 				}
+				if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == 3) {
+					game->hard_data.soft_data.want_dash_timestamp = game->update_time;
+				}
 				// int key = sdl_key_to_windows_key(event.button.button);
 				// b8 is_down = event.type == SDL_MOUSEBUTTONDOWN;
 				// handle_key_event(key, is_down, false);

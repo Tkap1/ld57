@@ -44,6 +44,7 @@ void main()
 	float d = distance(vec2(player_pos.x * 0.04, 0.5), uv);
 	d = smoothstep(0.4, 0.0, d);
 	strength += d * 0.5;
+	strength -= pow(smoothstep(0.2, 0.9, curve), 16.0) * 0.05;
 	color = vec3(n * strength);
 	out_color = vec4(color, 1.0);
 }
