@@ -2882,39 +2882,37 @@ func void init_obstacles()
 	{
 		int z = -410;
 		while(z > -590) {
-			if(chance100(&rng, 100)) {
-				constexpr float radius = 1.0f;
-				int gap = rand_range_ii(&rng, 4, 8);
-				float center_x = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+			constexpr float radius = 1.0f;
+			int gap = rand_range_ii(&rng, 4, 8);
+			float center_x = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
 
-				s_list<float, 16> x_arr;
+			s_list<float, 16> x_arr;
 
-				{
-					float x = center_x - gap;
-					while(x >= -c_wall_x + radius) {
-						x_arr.add(x);
-						x -= radius * 2;
-					}
+			{
+				float x = center_x - gap;
+				while(x >= -c_wall_x + radius) {
+					x_arr.add(x);
+					x -= radius * 2;
 				}
-				{
-					float x = center_x + gap;
-					while(x <= c_wall_x - radius) {
-						x_arr.add(x);
-						x += radius * 2;
-					}
+			}
+			{
+				float x = center_x + gap;
+				while(x <= c_wall_x - radius) {
+					x_arr.add(x);
+					x += radius * 2;
 				}
+			}
 
-				foreach_val(x_pos_i, x_pos, x_arr) {
-					s_projectile proj = zero;
-					proj.pos = v3(
-						x_pos, 0, z
-					);
-					proj.type = e_projectile_type_static;
-					proj.prev_pos = proj.pos;
-					proj.radius = radius;
-					proj.color = hex_to_rgb(0xA18594);
-					soft_data->projectile_arr.add(proj);
-				}
+			foreach_val(x_pos_i, x_pos, x_arr) {
+				s_projectile proj = zero;
+				proj.pos = v3(
+					x_pos, 0, z
+				);
+				proj.type = e_projectile_type_static;
+				proj.prev_pos = proj.pos;
+				proj.radius = radius;
+				proj.color = hex_to_rgb(0xA18594);
+				soft_data->projectile_arr.add(proj);
 			}
 			z -= 10;
 		}
@@ -2941,32 +2939,31 @@ func void init_obstacles()
 	{
 		int z = -820;
 		while(z > -980) {
-			if(chance100(&rng, 100)) {
-				constexpr float radius = 1.0f;
+			constexpr float radius = 1.0f;
 
-				{
-					float x = -c_wall_x + radius * 2;
-					while(x <= c_wall_x - radius * 2) {
-						s_projectile proj = zero;
-						proj.pos = v3(
-							x, 0, z
-						);
-						proj.type = e_projectile_type_static;
-						proj.prev_pos = proj.pos;
-						proj.radius = radius;
-						proj.color = hex_to_rgb(0x781F19);
-						soft_data->projectile_arr.add(proj);
-						x += radius * 2;
-					}
+			{
+				float x = -c_wall_x + radius * 2;
+				while(x <= c_wall_x - radius * 2) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						x, 0, z
+					);
+					proj.type = e_projectile_type_static;
+					proj.prev_pos = proj.pos;
+					proj.radius = radius;
+					proj.color = hex_to_rgb(0x781F19);
+					soft_data->projectile_arr.add(proj);
+					x += radius * 2;
 				}
-				{
-					s_teleporter teleporter = zero;
-					float x_pos = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
-					float x_destination = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
-					teleporter.pos = v3(x_pos, 0.0f, z + 5);
-					teleporter.destination = v3(x_destination, 0.0f, z - 5);
-					soft_data->teleporter_arr.add(teleporter);
-				}
+			}
+
+			{
+				s_teleporter teleporter = zero;
+				float x_pos = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+				float x_destination = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+				teleporter.pos = v3(x_pos, 0.0f, z + 5);
+				teleporter.destination = v3(x_destination, 0.0f, z - 5);
+				soft_data->teleporter_arr.add(teleporter);
 			}
 			z -= 20;
 		}
@@ -3027,6 +3024,88 @@ func void init_obstacles()
 				soft_data->projectile_arr.add(proj);
 			}
 			z -= 5;
+		}
+	}
+
+	{
+		int z = -1410;
+		while(z > -1590) {
+
+			{
+				constexpr float radius = 1.0f;
+				int gap = rand_range_ii(&rng, 4, 6);
+				float center_x = randf_range(&rng, -c_wall_x + radius, c_wall_x - radius);
+
+				s_list<float, 16> x_arr;
+
+				{
+					float x = center_x - gap;
+					while(x >= -c_wall_x + radius) {
+						x_arr.add(x);
+						x -= radius * 2;
+					}
+				}
+				{
+					float x = center_x + gap;
+					while(x <= c_wall_x - radius) {
+						x_arr.add(x);
+						x += radius * 2;
+					}
+				}
+
+				foreach_val(x_pos_i, x_pos, x_arr) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						x_pos, 0, z
+					);
+					proj.type = e_projectile_type_static;
+					proj.prev_pos = proj.pos;
+					proj.radius = radius;
+					proj.color = hex_to_rgb(0xA18594);
+					soft_data->projectile_arr.add(proj);
+				}
+			}
+
+			int temp_z = z - 3;
+			for(int i = 0; i < 5; i += 1) {
+
+				if(chance100(&rng, 50)) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, temp_z
+					);
+					proj.type = e_projectile_type_bounce;
+					proj.prev_pos = proj.pos;
+					proj.radius = randf_range(&rng, 0.5f, 1.5f);
+					proj.going_right = rand_bool(&rng);
+					proj.color = make_color(0.1f, 0.1f, 1.0f);
+					soft_data->projectile_arr.add(proj);
+				}
+				temp_z -= 3;
+			}
+
+			z -= 20;
+		}
+	}
+
+	{
+		int z = -1610;
+		while(z > -1790) {
+			for(int i = 0; i < 5; i += 1) {
+				if(chance100(&rng, 55)) {
+					s_projectile proj = zero;
+					proj.pos = v3(
+						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, z
+					);
+					proj.type = e_projectile_type_static;
+					proj.prev_pos = proj.pos;
+					proj.radius = randf_range(&rng, 0.5f, 0.75f);
+					proj.going_right = rand_bool(&rng);
+					proj.color = hex_to_rgb(0xB32428);
+					soft_data->projectile_arr.add(proj);
+				}
+			}
+			z -= 4;
 		}
 	}
 }
