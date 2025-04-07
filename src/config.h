@@ -57,7 +57,7 @@ global constexpr float c_game_speed_arr[] = {
 };
 
 global constexpr float c_bottom = 2000;
-global constexpr s_v3 c_goal_pos = {0.0f, 0.0f, -20.0f};
+global constexpr s_v3 c_goal_pos = {0.0f, 0.0f, -c_bottom};
 
 global constexpr int c_boost_z_start = 10;
 global constexpr int c_boost_z_end = 1900;

@@ -404,11 +404,15 @@ func void update()
 				game->do_soft_reset = false;
 				memset(soft_data, 0, sizeof(s_soft_game_data));
 
+				// @Note(tkap, 07/04/2025): If restarting without a checkpoint, reset the timer so that the player doesn't have to
+				if(!hard_data->curr_checkpoint.valid) {
+					hard_data->update_count = 0;
+				}
+
 				if(hard_data->curr_checkpoint.valid) {
 					int index = hard_data->curr_checkpoint.value;
 					player->pos.z = (index + 1) * (float)-c_checkpoint_step;
 				}
-				player->pos.z = -190;
 
 				s_rng rng = make_rng(0);
 				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
