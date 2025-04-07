@@ -21,10 +21,11 @@ layout(std140) uniform ublock
 	s_v2 window_size;
 	s_v3 cam_pos;
 	float render_time;
-	s_v2 mouse;
+	s_v3 player_pos;
 	float pad0;
+	s_v2 mouse;
 	float pad1;
-	// float pad2;
+	float pad2;
 };
 #if defined(m_cpu_side)
 #pragma pack(pop)

@@ -17,7 +17,7 @@ func s_shader load_shader_from_file(char* file, s_linear_arena* arena);
 func u8* read_file(char* path, s_linear_arena* arena);
 func void set_window_size(int width, int height);
 func s_rect do_letterbox(s_v2 curr_size, s_v2 base_size);
-func s_render_flush_data make_render_flush_data(s_v3 cam_pos);
+func s_render_flush_data make_render_flush_data(s_v3 cam_pos, s_v3 player_pos);
 func s_mesh make_mesh_from_vertices(s_vertex* vertex_arr, int vertex_count);
 func s_ply_mesh parse_ply_mesh(char* path, s_linear_arena* arena);
 func s_mesh make_mesh_from_ply_file(char* file, s_linear_arena* arena);

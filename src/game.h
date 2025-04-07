@@ -123,6 +123,7 @@ enum e_shader
 	e_shader_portal,
 	e_shader_button,
 	e_shader_text,
+	e_shader_background,
 	e_shader_count,
 };
 
@@ -136,6 +137,7 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/portal.shader",
 	"shaders/button.shader",
 	"shaders/text.shader",
+	"shaders/background.shader",
 };
 
 struct s_text_iterator
@@ -303,6 +305,7 @@ struct s_render_flush_data
 	e_cull_mode cull_mode;
 	s_v3 cam_pos;
 	s_fbo fbo;
+	s_v3 player_pos;
 };
 
 struct s_render_group

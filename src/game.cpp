@@ -584,7 +584,7 @@ func void update()
 				}
 				player->vel *= 0.9f;
 			}
-			player->pos.z = at_most(0.0f, player->pos.z);
+			player->pos.z = clamp(player->pos.z, -c_bottom, 0.0f);
 
 			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		hit goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 			if(soft_data->state == e_game_state1_default) {
@@ -789,7 +789,7 @@ func void render(float interp_dt, float delta)
 			draw_text(S("www.twitch.tv/Tkap1"), wxy(0.5f, 0.3f), 32, make_color(0.6f), true, &game->font);
 
 			{
-				s_render_flush_data data = make_render_flush_data(cam_pos);
+				s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 				data.projection = ortho;
 				data.blend_mode = e_blend_mode_normal;
 				data.depth_mode = e_depth_mode_no_read_no_write;
@@ -804,7 +804,7 @@ func void render(float interp_dt, float delta)
 			do_leaderboard();
 
 			{
-				s_render_flush_data data = make_render_flush_data(zero);
+				s_render_flush_data data = make_render_flush_data(zero, player_pos);
 				data.projection = ortho;
 				data.blend_mode = e_blend_mode_normal;
 				data.depth_mode = e_depth_mode_no_read_no_write;
@@ -833,7 +833,7 @@ func void render(float interp_dt, float delta)
 			}
 
 			{
-				s_render_flush_data data = make_render_flush_data(zero);
+				s_render_flush_data data = make_render_flush_data(zero, player_pos);
 				data.projection = ortho;
 				data.blend_mode = e_blend_mode_normal;
 				data.depth_mode = e_depth_mode_no_read_no_write;
@@ -851,7 +851,7 @@ func void render(float interp_dt, float delta)
 			}
 
 			{
-				s_render_flush_data data = make_render_flush_data(cam_pos);
+				s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 				data.projection = ortho;
 				data.blend_mode = e_blend_mode_normal;
 				data.depth_mode = e_depth_mode_no_read_no_write;
@@ -866,6 +866,16 @@ func void render(float interp_dt, float delta)
 				case e_game_state1_default:
 				case e_game_state1_pre_victory:
 				case e_game_state1_defeat: {
+
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		background start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					{
+						draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_background, zero, zero);
+						s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
+						data.projection = ortho;
+						data.depth_mode = e_depth_mode_no_read_no_write;
+						render_flush(data, true);
+					}
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		background end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 					{
@@ -912,7 +922,7 @@ func void render(float interp_dt, float delta)
 								color = make_color(0.5f, 1, 0.5f);
 								soft_data->hovered_boost = boost_i;
 							}
-							draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
+							draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
 						}
 
 						// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -934,12 +944,12 @@ func void render(float interp_dt, float delta)
 						{
 							s_m4 model = m4_translate(player_pos);
 							scale_m4_by_radius(&model, c_player_radius);
-							draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
+							draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_fresnel);
 						}
 						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw player end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 						{
-							s_render_flush_data data = make_render_flush_data(cam_pos);
+							s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 							data.projection = perspective;
 							data.view = view;
 							data.light_projection = light_projection;
@@ -962,7 +972,7 @@ func void render(float interp_dt, float delta)
 						}
 
 						{
-							s_render_flush_data data = make_render_flush_data(cam_pos);
+							s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 							data.projection = perspective;
 							data.view = view;
 							data.light_projection = light_projection;
@@ -1011,7 +1021,7 @@ func void render(float interp_dt, float delta)
 
 					update_particles();
 					{
-						s_render_flush_data data = make_render_flush_data(cam_pos);
+						s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 						data.projection = perspective;
 						data.view = view;
 						data.blend_mode = e_blend_mode_additive;
@@ -1023,7 +1033,7 @@ func void render(float interp_dt, float delta)
 					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 					{
 						draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
-						s_render_flush_data data = make_render_flush_data(cam_pos);
+						s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 						data.projection = ortho;
 						data.blend_mode = e_blend_mode_normal;
 						data.depth_mode = e_depth_mode_no_read_no_write;
@@ -1048,7 +1058,7 @@ func void render(float interp_dt, float delta)
 					}
 
 					{
-						s_render_flush_data data = make_render_flush_data(cam_pos);
+						s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 						data.projection = ortho;
 						data.blend_mode = e_blend_mode_normal;
 						data.depth_mode = e_depth_mode_no_read_no_write;
@@ -1078,7 +1088,7 @@ func void render(float interp_dt, float delta)
 							add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
 						}
 						{
-							s_render_flush_data data = make_render_flush_data(cam_pos);
+							s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 							data.projection = ortho;
 							data.blend_mode = e_blend_mode_normal;
 							data.depth_mode = e_depth_mode_no_read_no_write;
@@ -1160,7 +1170,7 @@ func void render(float interp_dt, float delta)
 				draw_rect_topleft(state->name.cursor_visual_pos - v2(0.0f, extra_height / 2), cursor_size, color);
 			}
 
-			s_render_flush_data data = make_render_flush_data(cam_pos);
+			s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
 			data.projection = ortho;
 			data.blend_mode = e_blend_mode_normal;
 			data.depth_mode = e_depth_mode_no_read_no_write;
@@ -1305,14 +1315,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		uniform_data.render_time = game->render_time;
 		uniform_data.cam_pos = data.cam_pos;
 		uniform_data.mouse = g_mouse;
-		// data.view = render_pass_data.view;
-		// data.projection = render_pass_data.projection;
-		// data.base_res = g_base_res;
-		// data.window_size.x = (float)g_platform_data.window_width;
-		// data.window_size.y = (float)g_platform_data.window_height;
-		// data.time = (float)gr->total_time;
-		// data.mouse = g_platform_data.mouse;
-		// data.cam_pos = render_pass_data.cam_pos;
+		uniform_data.player_pos = data.player_pos;
 		gl(glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(s_uniform_data), &uniform_data));
 	}
 
@@ -1517,7 +1520,7 @@ func s_rect do_letterbox(s_v2 curr_size, s_v2 base_size)
 	return rect_result;
 }
 
-func s_render_flush_data make_render_flush_data(s_v3 cam_pos)
+func s_render_flush_data make_render_flush_data(s_v3 cam_pos, s_v3 player_pos)
 {
 	s_render_flush_data result = zero;
 	result.view = m4_identity();
@@ -1528,6 +1531,7 @@ func s_render_flush_data make_render_flush_data(s_v3 cam_pos)
 	result.cull_mode = e_cull_mode_disabled;
 	result.blend_mode = e_blend_mode_normal;
 	result.depth_mode = e_depth_mode_read_and_write;
+	result.player_pos = player_pos;
 	return result;
 }
 
