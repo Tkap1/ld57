@@ -47,7 +47,7 @@ void main()
 {
 	vec3 color = vec3(0.0);
 	float a = texture(in_texture, v_uv).r;
-	color = vec3(1);
-	out_color = vec4(color, a);
+	color = v_color.rgb;
+	out_color = vec4(color, v_color.a * a);
 }
 #endif

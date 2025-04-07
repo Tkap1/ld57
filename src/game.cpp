@@ -60,6 +60,13 @@
 
 #include "tk_types.h"
 
+
+#if defined(__EMSCRIPTEN__)
+global constexpr b8 c_on_web = true;
+#else
+global constexpr b8 c_on_web = false;
+#endif
+
 #if defined(m_debug)
 #define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); }}
 #else // m_debug
@@ -75,33 +82,49 @@
 
 #include "tk_math.h"
 #include "config.h"
+#include "leaderboard.h"
 #include "game.h"
 #include "tk_color.h"
 #include "shader_shared.h"
 
+
 global s_platform_data* g_platform_data;
 global s_game* game;
 global s_v2 g_mouse;
+global b8 g_click;
 
 #include "shared.cpp"
+
+#if defined(__EMSCRIPTEN__)
+#include "leaderboard.cpp"
+#endif
 
 m_dll_export void init(s_platform_data* platform_data)
 {
 	g_platform_data = platform_data;
 	game = (s_game*)platform_data->memory;
 	game->speed_index = 5;
-	game->do_hard_reset = true;
 	game->rng = make_rng(1234);
 	game->reload_shaders = true;
 	game->speed = 1;
 
+	SDL_StartTextInput();
+
+	set_state0_next_frame(e_game_state0_main_menu);
+
+	u8* cursor = platform_data->memory + sizeof(s_game);
+
 	{
-		u8* memory = platform_data->memory + sizeof(s_game);
-		game->update_frame_arena = make_arena_from_memory(memory, 10 * c_mb);
+		game->update_frame_arena = make_arena_from_memory(cursor, 10 * c_mb);
+		cursor += 10 * c_mb;
 	}
 	{
-		u8* memory = platform_data->memory + sizeof(s_game) + 10 * c_mb;
-		game->render_frame_arena = make_arena_from_memory(memory, 10 * c_mb);
+		game->render_frame_arena = make_arena_from_memory(cursor, 10 * c_mb);
+		cursor += 10 * c_mb;
+	}
+	{
+		game->circular_arena = make_circular_arena_from_memory(cursor, 10 * c_mb);
+		cursor += 10 * c_mb;
 	}
 
 	platform_data->cycle_frequency = SDL_GetPerformanceFrequency();
@@ -170,7 +193,11 @@ m_dll_export void init(s_platform_data* platform_data)
 		}
 	}
 
-	game->font = load_font_from_file("assets/Inconsolata-Regular.ttf", 64, &game->render_frame_arena);
+	game->font = load_font_from_file("assets/Inconsolata-Regular.ttf", 128, &game->render_frame_arena);
+
+	#if defined(__EMSCRIPTEN__)
+	load_or_create_leaderboard_id();
+	#endif
 }
 
 m_dll_export void init_after_recompile(s_platform_data* platform_data)
@@ -218,9 +245,35 @@ m_dll_export void do_game(s_platform_data* platform_data)
 		#endif // __EMSCRIPTEN__
 	}
 
+	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		handle state start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	if(game->clear_state) {
+		game->clear_state = false;
+		game->state0.count = 0;
+	}
+	if(game->pop_state) {
+		game->pop_state = false;
+		while(true) {
+			game->state0.pop_last();
+			s_state temp = game->state0.get_last();
+			if(!temp.temporary) { break; }
+		}
+		game->accumulator += c_update_delay;
+	}
+
+	if(game->next_state.valid) {
+		game->state0.add(game->next_state.value);
+		game->next_state.valid = zero;
+		game->accumulator += c_update_delay;
+	}
+	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		handle state end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 	input();
 	float game_speed = c_game_speed_arr[game->speed_index] * game->speed;
 	game->accumulator += delta64 * game_speed;
+	#if defined(__EMSCRIPTEN__)
+	game->accumulator = at_most(game->accumulator, 1.0);
+	#else
+	#endif
 	while(game->accumulator >= c_update_delay) {
 		game->accumulator -= c_update_delay;
 		update();
@@ -231,6 +284,15 @@ m_dll_export void do_game(s_platform_data* platform_data)
 
 func void input()
 {
+
+	game->char_events.count = 0;
+	game->key_events.count = 0;
+
+	for(int i = 0; i < c_max_keys; i += 1) {
+		game->input_arr[i].half_transition_count = 0;
+	}
+
+	g_click = false;
 	{
 		int x;
 		int y;
@@ -261,50 +323,53 @@ func void input()
 
 			case SDL_KEYDOWN:
 			case SDL_KEYUP: {
+				int key = event.key.keysym.sym;
+				b8 is_down = event.type == SDL_KEYDOWN;
+				handle_key_event(key, is_down, event.key.repeat != 0);
+
+				if(key < c_max_keys) {
+					game->input_arr[key].is_down = is_down;
+					game->input_arr[key].half_transition_count += 1;
+				}
 				if(event.type == SDL_KEYDOWN) {
-					if(event.key.keysym.sym == SDLK_f && event.key.repeat == 0) {
+					if(key == SDLK_f && event.key.repeat == 0) {
 						game->hard_data.soft_data.want_dash_timestamp = game->update_time;
-						// game->hard_data.display_checkpoint = true;
 					}
-					else if(event.key.keysym.sym == SDLK_r && event.key.repeat == 0) {
-						game->do_hard_reset = true;
+					else if(key == SDLK_r && event.key.repeat == 0) {
+						if(event.key.keysym.mod & KMOD_LCTRL) {
+							game->do_hard_reset = true;
+						}
+						else {
+							game->do_soft_reset = true;
+						}
 					}
 					#if defined(m_debug)
-					else if(event.key.keysym.sym == SDLK_KP_PLUS) {
+					else if(key == SDLK_KP_PLUS) {
 						game->speed_index = circular_index(game->speed_index + 1, array_count(c_game_speed_arr));
 						printf("Game speed: %f\n", c_game_speed_arr[game->speed_index]);
 					}
-					else if(event.key.keysym.sym == SDLK_KP_MINUS) {
+					else if(key == SDLK_KP_MINUS) {
 						game->speed_index = circular_index(game->speed_index - 1, array_count(c_game_speed_arr));
 						printf("Game speed: %f\n", c_game_speed_arr[game->speed_index]);
 					}
 					#endif // m_debug
 				}
-				// int key = sdl_key_to_windows_key(event.key.keysym.sym);
-				// if(key == -1) { break; }
-				// b8 is_repeat = event.key.repeat ? true : false;
-				// b8 is_down = event.type == SDL_KEYDOWN;
-
-				// handle_key_event(key, is_down, is_repeat);
-
-				// // @Note(tkap, 11/11/2023): SDL does not give us a text input event for backspace, so let's hack it
-				// if(key == c_key_backspace && is_down) {
-				// 	g_platform_data->input.char_events.add('\b');
-				// }
-
 			} break;
 
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 			{
+				if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == 1) {
+					g_click = true;
+				}
 				// int key = sdl_key_to_windows_key(event.button.button);
 				// b8 is_down = event.type == SDL_MOUSEBUTTONDOWN;
 				// handle_key_event(key, is_down, false);
 			} break;
 
 			case SDL_TEXTINPUT: {
-				// char c = event.text.text[0];
-				// g_platform_data->input.char_events.add((char)c);
+				char c = event.text.text[0];
+				game->char_events.add((char)c);
 			} break;
 
 			case SDL_MOUSEWHEEL: {
@@ -317,269 +382,302 @@ func void input()
 
 func void update()
 {
+
 	game->update_frame_arena.used = 0;
 
+	e_game_state0 state0 = (e_game_state0)game->state0.get_last().value;
 	s_hard_game_data* hard_data = &game->hard_data;
 	s_soft_game_data* soft_data = &hard_data->soft_data;
 	s_player* player = &soft_data->player;
 
 	player->prev_pos = player->pos;
 
-	if(game->do_hard_reset) {
-		game->do_hard_reset = false;
-		game->do_soft_reset = true;
-		memset(hard_data, 0, sizeof(s_hard_game_data));
-	}
-	if(game->do_soft_reset) {
-		game->do_soft_reset = false;
-		memset(soft_data, 0, sizeof(s_soft_game_data));
+	switch(state0) {
+		case e_game_state0_play: {
 
-		{
-			float checkpoint = floorf(hard_data->highest_z / c_checkpoint_step);
-			player->pos.z = -checkpoint * c_checkpoint_step;
-		}
+			if(game->do_hard_reset) {
+				game->do_hard_reset = false;
+				game->do_soft_reset = true;
+				memset(hard_data, 0, sizeof(s_hard_game_data));
+			}
+			if(game->do_soft_reset) {
+				game->do_soft_reset = false;
+				memset(soft_data, 0, sizeof(s_soft_game_data));
 
-		s_rng rng = make_rng(0);
-		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-		{
-			int z = c_boost_z_start;
-			while(z < c_boost_z_end) {
-				if(chance100(&rng, c_boost_chance)) {
-					int count = rand_range_ii(&rng, 1, 5);
-					for(int i = 0; i < count; i += 1) {
-						s_speed_boost boost = zero;
-						boost.pos = v3(
-							-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-						);
+				if(hard_data->curr_checkpoint.valid) {
+					int index = hard_data->curr_checkpoint.value;
+					player->pos.z = (index + 1) * (float)-c_checkpoint_step;
+				}
+				player->pos.z = -190;
+
+				s_rng rng = make_rng(0);
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn speed boosts start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+				{
+					int z = c_boost_z_start;
+					while(z < c_boost_z_end) {
+						if(chance100(&rng, c_boost_chance)) {
+							int count = rand_range_ii(&rng, 1, 5);
+							for(int i = 0; i < count; i += 1) {
+								s_speed_boost boost = zero;
+								boost.pos = v3(
+									-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+								);
+								z += c_boost_z_step;
+								soft_data->speed_boost_arr.add(boost);
+							}
+						}
 						z += c_boost_z_step;
-						soft_data->speed_boost_arr.add(boost);
 					}
 				}
-				z += c_boost_z_step;
-			}
-		}
-		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn speed boosts end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-		{
-			int z = c_default_proj_z_start;
-			while(z < c_default_proj_z_end) {
-				if(chance100(&rng, c_default_proj_chance)) {
-					s_projectile proj = zero;
-					proj.pos = v3(
-						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-					);
-					proj.type = e_projectile_type_default;
-					proj.prev_pos = proj.pos;
-					proj.radius = randf_range(&rng, 0.5f, 1.5f);
-					proj.going_right = rand_bool(&rng);
-					soft_data->projectile_arr.add(proj);
-					z += c_default_proj_z_step;
+				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		spawn projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+				{
+					int z = c_default_proj_z_start;
+					while(z < c_default_proj_z_end) {
+						if(chance100(&rng, c_default_proj_chance)) {
+							s_projectile proj = zero;
+							proj.pos = v3(
+								-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+							);
+							proj.type = e_projectile_type_default;
+							proj.prev_pos = proj.pos;
+							proj.radius = randf_range(&rng, 0.5f, 1.5f);
+							proj.going_right = rand_bool(&rng);
+							soft_data->projectile_arr.add(proj);
+							z += c_default_proj_z_step;
+						}
+						z += c_default_proj_z_step * 2;
+					}
 				}
-				z += c_default_proj_z_step * 2;
-			}
-		}
-
-		{
-			int z = c_bounce_proj_z_start;
-			while(z < c_bounce_proj_z_end) {
-				if(chance100(&rng, c_bounce_proj_chance)) {
-					s_projectile proj = zero;
-					proj.pos = v3(
-						-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
-					);
-					proj.type = e_projectile_type_bounce;
-					proj.prev_pos = proj.pos;
-					proj.radius = randf_range(&rng, 0.5f, 1.5f);
-					proj.going_right = rand_bool(&rng);
-					soft_data->projectile_arr.add(proj);
-					z += c_bounce_proj_z_step;
-				}
-				z += c_bounce_proj_z_step * 2;
-			}
-		}
-		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-	}
-
-	b8 want_to_dash = false;
-	{
-		float passed = game->update_time - soft_data->want_dash_timestamp;
-		if(passed <= 0.1f && soft_data->want_dash_timestamp > 0) {
-			want_to_dash = true;
-		}
-	}
-	b8 handle_input = soft_data->state == e_game_state_default || soft_data->state == e_game_state_pre_victory;
-	b8 update_entities = soft_data->state != e_game_state_defeat;
-
-	if(handle_input && want_to_dash) {
-		try_to_dash();
-	}
-
-	if(soft_data->state == e_game_state_defeat) {
-		float passed = game->update_time - soft_data->defeat_timestamp;
-		if(passed >= 0.5f) {
-			game->do_soft_reset = true;
-		}
-	}
-	b8 do_move = handle_input;
-
-	switch(player->state) {
-		case e_player_state_default: {
-			if(handle_input) {
-				s_v3 temp0 = player->wanted_pos;
-				s_v3 temp1 = player->pos;
-				temp0.z = 0;
-				temp1.z = 0;
-				s_v3 v = temp0 - temp1;
-				float dist = v3_length(v);
-				float speed = smoothstep(0.0f, 5.0f, dist);
-				v = v3_set_mag(v, min(dist, speed));
-				constexpr float z_speed = 0.1f;
-				player->z_speed.target = z_speed;
-				if(game->down_input.speed_boost) {
-					player->z_speed.target = z_speed * 3;
-				}
-				player->z_speed.curr = go_towards(player->z_speed.curr, player->z_speed.target, 0.01f);
-				v.z = -player->z_speed.curr;
-				v.x *= 0.035f;
-				v.z *= 0.1f;
-				player->vel += v;
-			}
-		} break;
-
-		case e_player_state_dashing: {
-			do_move = false;
-			assert(soft_data->player.dash_target.valid);
-			s_speed_boost boost = soft_data->speed_boost_arr[player->dash_target.value];
-			s_v3 dir = v3_normalized(boost.pos - player->pos);
-			player->vel = dir;
-			player->pos = go_towards(player->pos, boost.pos, 1.0f);
-			if(v3_distance(player->pos, boost.pos) < 0.01f) {
-				soft_data->speed_boost_arr.remove_and_swap(soft_data->player.dash_target.value);
-				set_player_state(e_player_state_post_dash);
-				player->dash_target = maybe<int>();
-				player->post_dash_timestamp = game->update_time;
-				player->vel = zero;
-				play_sound(e_sound_pop);
 
 				{
-					s_particle_spawn_data data = zero;
-					data.shrink = 0.5f;
-					data.duration = 0.5f;
-					data.duration_rand = 0.5f;
-					data.radius = 1.5f;
-					data.radius_rand = 0.25f;
-					data.color = make_color(0.5f, 1.0f, 0.5f);
-					data.color_rand = 1.0f;
-					data.dir = v3(1);
-					data.dir_rand = v3(1);
-					data.speed = 0.1f;
-					data.speed_rand = 0.5f;
-					spawn_particles(64, boost.pos, data);
+					int z = c_bounce_proj_z_start;
+					while(z < c_bounce_proj_z_end) {
+						if(chance100(&rng, c_bounce_proj_chance)) {
+							s_projectile proj = zero;
+							proj.pos = v3(
+								-c_wall_x + 2 + randf32(&rng) * (c_wall_x * 2 - 4), 0, -z
+							);
+							proj.type = e_projectile_type_bounce;
+							proj.prev_pos = proj.pos;
+							proj.radius = randf_range(&rng, 0.5f, 1.5f);
+							proj.going_right = rand_bool(&rng);
+							soft_data->projectile_arr.add(proj);
+							z += c_bounce_proj_z_step;
+						}
+						z += c_bounce_proj_z_step * 2;
+					}
+				}
+				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		spawn projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+			}
+
+			b8 want_to_dash = false;
+			{
+				float passed = game->update_time - soft_data->want_dash_timestamp;
+				if(passed <= 0.1f && soft_data->want_dash_timestamp > 0) {
+					want_to_dash = true;
 				}
 			}
-		} break;
+			b8 handle_input = soft_data->state == e_game_state1_default || soft_data->state == e_game_state1_pre_victory;
+			b8 update_entities = soft_data->state != e_game_state1_defeat;
 
-		case e_player_state_post_dash: {
-			float passed = game->update_time - player->post_dash_timestamp;
-			if(passed >= 0.5f) {
-				set_player_state(e_player_state_default);
+			if(handle_input && want_to_dash) {
+				try_to_dash();
 			}
-		} break;
-	}
 
-	if(do_move) {
-		player->pos += player->vel;
-
-		float x_vel_len = fabsf(player->vel.x);
-
-		if(player->pos.x < -c_wall_x + 2) {
-			player->vel.x *= -0.8f;
-			player->pos.x = -c_wall_x + 2;
-			if(x_vel_len >= 0.25f) {
-				play_sound(e_sound_knock);
-			}
-		}
-		if(player->pos.x > c_wall_x - 2) {
-			player->vel.x *= -0.8f;
-			player->pos.x = c_wall_x - 2;
-			if(x_vel_len >= 0.25f) {
-				play_sound(e_sound_knock);
-			}
-		}
-		player->vel *= 0.9f;
-	}
-
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		hit goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	if(soft_data->state == e_game_state_default) {
-		float d = v3_distance(c_goal_pos, player->pos);
-		if(d < 2) {
-			soft_data->pre_victory_timestamp = game->render_time;
-			soft_data->state = e_game_state_pre_victory;
-			play_sound(e_sound_victory);
-		}
-	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		hit goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-	{
-		float player_z = fabsf(player->pos.z);
-		int curr_checkpoint = floorfi(game->hard_data.highest_z / c_checkpoint_step);
-		int next_checkpoint = curr_checkpoint + 1;
-		game->hard_data.highest_z = max(game->hard_data.highest_z, player_z);
-		if(player_z >= next_checkpoint * c_checkpoint_step) {
-			hard_data->display_checkpoint = true;
-
-			// @TODO(tkap, 05/04/2025): better sound
-			play_sound(e_sound_pop);
-		}
-	}
-
-	if(soft_data->state == e_game_state_default) {
-		foreach_val(proj_i, proj, soft_data->projectile_arr) {
-			if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, proj.radius)) {
-				if(proj.type == e_projectile_type_default) {
-					soft_data->state = e_game_state_defeat;
-					soft_data->defeat_timestamp = game->update_time;
-					play_sound(e_sound_defeat);
-					break;
+			if(soft_data->state == e_game_state1_defeat) {
+				float passed = game->update_time - soft_data->defeat_timestamp;
+				if(passed >= 0.5f) {
+					game->do_soft_reset = true;
 				}
-				else if(proj.type == e_projectile_type_bounce) {
-					player->vel = player->vel * -5;
-					soft_data->projectile_arr.remove_and_swap(proj_i);
-					if(player->state == e_player_state_dashing || player->state == e_player_state_post_dash) {
+			}
+			b8 do_move = handle_input;
+
+			switch(player->state) {
+				case e_player_state_default: {
+					if(handle_input) {
+						s_v3 temp0 = player->wanted_pos;
+						s_v3 temp1 = player->pos;
+						temp0.z = 0;
+						temp1.z = 0;
+						s_v3 v = temp0 - temp1;
+						float dist = v3_length(v);
+						float speed = smoothstep(0.0f, 5.0f, dist);
+						v = v3_set_mag(v, min(dist, speed));
+						constexpr float z_speed = 0.1f;
+						player->z_speed.target = z_speed;
+						if(game->down_input.speed_boost) {
+							player->z_speed.target = z_speed * 3;
+						}
+						player->z_speed.curr = go_towards(player->z_speed.curr, player->z_speed.target, 0.01f);
+						v.z = -player->z_speed.curr;
+						v.x *= 0.035f;
+						v.z *= 0.1f;
+						player->vel += v;
+					}
+				} break;
+
+				case e_player_state_dashing: {
+					do_move = false;
+					assert(soft_data->player.dash_target.valid);
+					s_speed_boost boost = soft_data->speed_boost_arr[player->dash_target.value];
+					s_v3 dir = v3_normalized(boost.pos - player->pos);
+					player->vel = dir;
+					player->pos = go_towards(player->pos, boost.pos, 1.0f);
+					if(v3_distance(player->pos, boost.pos) < 0.01f) {
+						soft_data->speed_boost_arr.remove_and_swap(soft_data->player.dash_target.value);
+						set_player_state(e_player_state_post_dash);
+						player->dash_target = maybe<int>();
+						player->post_dash_timestamp = game->update_time;
+						player->vel = zero;
+						play_sound(e_sound_pop);
+
+						{
+							s_particle_spawn_data data = zero;
+							data.shrink = 0.5f;
+							data.duration = 0.5f;
+							data.duration_rand = 0.5f;
+							data.radius = 1.5f;
+							data.radius_rand = 0.25f;
+							data.color = make_color(0.5f, 1.0f, 0.5f);
+							data.color_rand = 1.0f;
+							data.dir = v3(1);
+							data.dir_rand = v3(1);
+							data.speed = 0.1f;
+							data.speed_rand = 0.5f;
+							spawn_particles(64, boost.pos, data);
+						}
+					}
+				} break;
+
+				case e_player_state_post_dash: {
+					float passed = game->update_time - player->post_dash_timestamp;
+					if(passed >= 0.5f) {
 						set_player_state(e_player_state_default);
 					}
-					proj_i -= 1;
-					play_sound(e_sound_clap);
-				}
+				} break;
 			}
-		}
-	}
 
-	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		update projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	{
-		foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
-			proj->prev_pos = proj->pos;
-			if(update_entities) {
-				if(proj->going_right) {
-					proj->pos.x += 0.1f;
+			if(do_move) {
+				player->pos += player->vel;
+
+				float x_vel_len = fabsf(player->vel.x);
+
+				if(player->pos.x < -c_wall_x + 2) {
+					player->vel.x *= -0.8f;
+					player->pos.x = -c_wall_x + 2;
+					if(x_vel_len >= 0.25f) {
+						play_sound(e_sound_knock);
+					}
 				}
-				else {
-					proj->pos.x -= 0.1f;
+				if(player->pos.x > c_wall_x - 2) {
+					player->vel.x *= -0.8f;
+					player->pos.x = c_wall_x - 2;
+					if(x_vel_len >= 0.25f) {
+						play_sound(e_sound_knock);
+					}
 				}
-				if(proj->pos.x <= -c_wall_x + 2) {
-					proj->going_right = !proj->going_right;
-				}
-				else if(proj->pos.x >= c_wall_x - 2) {
-					proj->going_right = !proj->going_right;
+				player->vel *= 0.9f;
+			}
+			player->pos.z = at_most(0.0f, player->pos.z);
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		hit goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			if(soft_data->state == e_game_state1_default) {
+				float d = v3_distance(c_goal_pos, player->pos);
+				if(d < 2) {
+					soft_data->pre_victory_timestamp = game->render_time;
+					soft_data->state = e_game_state1_pre_victory;
+					play_sound(e_sound_victory);
 				}
 			}
-		}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		hit goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		hit checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			{
+				float z = c_checkpoint_step;
+				int index = 0;
+				while(z < c_bottom) {
+					s_v3 pos = v3(0.0f, 0.0f, -z);
+					if(!hard_data->curr_checkpoint.valid || hard_data->curr_checkpoint.value != index) {
+						float d = v3_distance(player->pos, pos);
+						if(d <= 5) {
+							hard_data->curr_checkpoint = maybe(index);
+							play_sound(e_sound_checkpoint);
+
+							{
+								s_particle_spawn_data data = zero;
+								data.shrink = 0.5f;
+								data.duration = 3.5f;
+								data.duration_rand = 0.5f;
+								data.radius = 1.5f;
+								data.radius_rand = 0.25f;
+								data.color = hex_to_rgb(0x3B83BD);
+								data.color_rand = 1.0f;
+								data.dir = v3(1);
+								data.dir_rand = v3(1);
+								data.speed = 0.1f;
+								data.speed_rand = 0.5f;
+
+								spawn_particles(128, pos, data);
+							}
+						}
+					}
+					index += 1;
+					z += c_checkpoint_step;
+				}
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		hit checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+			if(soft_data->state == e_game_state1_default) {
+				foreach_val(proj_i, proj, soft_data->projectile_arr) {
+					if(sphere_vs_sphere(player->pos, c_player_radius, proj.pos, proj.radius)) {
+						if(proj.type == e_projectile_type_default) {
+							soft_data->state = e_game_state1_defeat;
+							soft_data->defeat_timestamp = game->update_time;
+							play_sound(e_sound_defeat);
+							break;
+						}
+						else if(proj.type == e_projectile_type_bounce) {
+							player->vel = player->vel * -5;
+							soft_data->projectile_arr.remove_and_swap(proj_i);
+							if(player->state == e_player_state_dashing || player->state == e_player_state_post_dash) {
+								set_player_state(e_player_state_default);
+							}
+							proj_i -= 1;
+							play_sound(e_sound_clap);
+						}
+					}
+				}
+			}
+
+			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		update projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+			{
+				foreach_ptr(proj_i, proj, soft_data->projectile_arr) {
+					proj->prev_pos = proj->pos;
+					if(update_entities) {
+						if(proj->going_right) {
+							proj->pos.x += 0.1f;
+						}
+						else {
+							proj->pos.x -= 0.1f;
+						}
+						if(proj->pos.x <= -c_wall_x + 2) {
+							proj->going_right = !proj->going_right;
+						}
+						else if(proj->pos.x >= c_wall_x - 2) {
+							proj->going_right = !proj->going_right;
+						}
+					}
+				}
+			}
+			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		update projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+			hard_data->update_count += 1;
+
+		} break;
 	}
-	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		update projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 	game->update_time += (float)c_update_delay;
-	hard_data->update_count += 1;
 }
 
 func void render(float interp_dt, float delta)
@@ -606,6 +704,10 @@ func void render(float interp_dt, float delta)
 					gl(glDeleteProgram(game->shader_arr[i].id));
 				}
 				game->shader_arr[i] = shader;
+
+				#if defined(m_debug)
+				printf("Loaded %s\n", c_shader_path_arr[i]);
+				#endif // m_debug
 			}
 		}
 	}
@@ -646,22 +748,8 @@ func void render(float interp_dt, float delta)
 		player->wanted_pos = p;
 	}
 
-	if(hard_data->display_checkpoint) {
-		hard_data->display_checkpoint = false;
-		s_fct fct = zero;
-		fct.text = S("Checkpoint!");
-		fct.start_pos = cam_pos;
-		fct.pos = cam_pos;
-		s_v3 dir = v3_normalized(cam_forward + v3(0, 0, -0.5f));
-		fct.target_pos = cam_pos + dir * 100;
-		// fct.target_pos = v3(0, 10, -100);
-		// fct.target_pos = v3(0, 0, -20);
-		fct.spawn_timestamp = game->render_time;
-		hard_data->fct_arr.add(fct);
-	}
-
 	game->speed = 1;
-	if(soft_data->state == e_game_state_pre_victory || soft_data->state == e_game_state_default) {
+	if(soft_data->state == e_game_state1_pre_victory || soft_data->state == e_game_state1_default) {
 		float d = v3_distance(c_goal_pos, player_pos);
 		float slow = smoothstep(10.0, 0.0, d);
 		game->speed = range_lerp(slow, 0, 1, 1, 0.1f);
@@ -670,246 +758,413 @@ func void render(float interp_dt, float delta)
 	clear_framebuffer_depth(0);
 	clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 
-	switch(soft_data->state) {
-		case e_game_state_default:
-		case e_game_state_pre_victory:
-		case e_game_state_defeat: {
+	e_game_state0 state0 = (e_game_state0)game->state0.get_last().value;
 
-			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+	switch(state0) {
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		main menu start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		case e_game_state0_main_menu: {
+
+			if(do_button(S("Play"), wxy(0.5f, 0.5f), true)) {
+				set_state0_next_frame(e_game_state0_play);
+				game->do_hard_reset = true;
+			}
+
+			if(do_button(S("Leaderboard"), wxy(0.5f, 0.6f), true)) {
+				#if defined(__EMSCRIPTEN__)
+				get_leaderboard(c_leaderboard_id);
+				#endif
+				set_state0_next_frame(e_game_state0_leaderboard);
+			}
+
+			if(do_button(S("Options"), wxy(0.5f, 0.7f), true)) {
+				set_state0_next_frame(e_game_state0_options);
+			}
+
+			draw_text(c_game_name, wxy(0.5f, 0.2f), 128, make_color(1), true, &game->font);
+			draw_text(S("www.twitch.tv/Tkap1"), wxy(0.5f, 0.3f), 32, make_color(0.6f), true, &game->font);
+
 			{
-				s_v3 ray_p = ray_at_y(ray, 0.0f);
+				s_render_flush_data data = make_render_flush_data(cam_pos);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
 
-				for(int i = 0; i < 20; i += 1) {
-					int vertical_index = ceilfi((player_pos.z + 10) / 2);
-					float z = vertical_index * 2.0f;
-					z -= i * 2.0f;
-					s_v4 color = make_color((vertical_index + i) & 1 ? 0.5f : 1.0f);
-					{
-						s_m4 model = m4_translate(v3(-c_wall_x, 0.0f, z));
-						model = m4_multiply(model, m4_scale(v3(2.0f)));
-						draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
-					}
-					{
-						s_m4 model = m4_translate(v3(c_wall_x, 0.0f, z));
-						model = m4_multiply(model, m4_scale(v3(2.0f)));
-						draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
-					}
-				}
+		} break;
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		main menu end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-				{
-					foreach_val(proj_i, proj, soft_data->projectile_arr) {
-						s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
-						s_m4 model = m4_translate(proj_pos);
-						scale_m4_by_radius(&model, proj.radius);
-						s_v4 color = make_color(1.0f, 0.1f, 0.1f);
-						if(proj.type == e_projectile_type_bounce) {
-							color = make_color(0.1f, 0.1f, 1.0f);
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		leaderboard start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		case e_game_state0_leaderboard: {
+			do_leaderboard();
+
+			{
+				s_render_flush_data data = make_render_flush_data(zero);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
+
+		} break;
+		case e_game_state0_win_leaderboard: {
+			do_leaderboard();
+
+			{
+				s_time_format data = update_count_to_time_format(game->update_count_at_win_time);
+				s_len_str text = format_text("%02i:%02i.%i", data.minutes, data.seconds, data.milliseconds);
+				draw_text(text, c_world_center * v2(1.0f, 0.2f), 64, make_color(1), true, &game->font);
+
+				draw_text(S("Press R to restart..."), c_world_center * v2(1.0f, 0.4f), sin_range(48, 60, game->render_time * 8.0f), make_color(0.66f), true, &game->font);
+			}
+
+			b8 want_to_reset = is_key_pressed(SDLK_r, true);
+			if(
+				do_button(S("Restart"), c_world_size * v2(0.87f, 0.82f), true)
+				|| is_key_pressed(SDLK_ESCAPE, true) || want_to_reset
+			) {
+				pop_game_state();
+				game->do_hard_reset = true;
+			}
+
+			{
+				s_render_flush_data data = make_render_flush_data(zero);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
+
+		} break;
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		leaderboard end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		options start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		case e_game_state0_options: {
+			b8 escape = is_key_pressed(SDLK_ESCAPE, true);
+			if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
+				pop_game_state();
+			}
+
+			{
+				s_render_flush_data data = make_render_flush_data(cam_pos);
+				data.projection = ortho;
+				data.blend_mode = e_blend_mode_normal;
+				data.depth_mode = e_depth_mode_no_read_no_write;
+				render_flush(data, true);
+			}
+		} break;
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		options end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		play start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+		case e_game_state0_play: {
+			switch(soft_data->state) {
+				case e_game_state1_default:
+				case e_game_state1_pre_victory:
+				case e_game_state1_defeat: {
+
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		render scene start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					{
+						s_v3 ray_p = ray_at_y(ray, 0.0f);
+
+						for(int i = 0; i < 20; i += 1) {
+							int vertical_index = ceilfi((player_pos.z + 10) / 2);
+							float z = vertical_index * 2.0f;
+							z -= i * 2.0f;
+							s_v4 color = make_color((vertical_index + i) & 1 ? 0.5f : 1.0f);
+							{
+								s_m4 model = m4_translate(v3(-c_wall_x, 0.0f, z));
+								model = m4_multiply(model, m4_scale(v3(2.0f)));
+								draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+							}
+							{
+								s_m4 model = m4_translate(v3(c_wall_x, 0.0f, z));
+								model = m4_multiply(model, m4_scale(v3(2.0f)));
+								draw_mesh(e_mesh_cube, model, color, e_shader_mesh);
+							}
 						}
-						draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
+
+						// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw projectiles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+						{
+							foreach_val(proj_i, proj, soft_data->projectile_arr) {
+								s_v3 proj_pos = lerp_v3(proj.prev_pos, proj.pos, interp_dt);
+								s_m4 model = m4_translate(proj_pos);
+								scale_m4_by_radius(&model, proj.radius);
+								s_v4 color = make_color(1.0f, 0.1f, 0.1f);
+								if(proj.type == e_projectile_type_bounce) {
+									color = make_color(0.1f, 0.1f, 1.0f);
+								}
+								draw_mesh(e_mesh_sphere, model, color, e_shader_fresnel);
+							}
+						}
+						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+						soft_data->hovered_boost = -1;
+						foreach_val(boost_i, boost, soft_data->speed_boost_arr) {
+							s_m4 model = m4_translate(boost.pos);
+							scale_m4_by_radius(&model, c_boost_radius);
+							s_v4 color = make_color(0.1f, 1, 0.1f);
+							if(is_boost_hovered(ray_p, boost.pos)) {
+								color = make_color(0.5f, 1, 0.5f);
+								soft_data->hovered_boost = boost_i;
+							}
+							draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
+						}
+
+						// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+						{
+							float z = c_checkpoint_step;
+							while(z < c_bottom) {
+								s_instance_data data = zero;
+								data.model = m4_translate(v3(0.0f, 0.0f, -z));
+								data.model = m4_multiply(data.model, m4_rotate(game->render_time, v3(0, 0, 1)));
+								data.model = m4_multiply(data.model, m4_scale(v3(2)));
+								data.color = make_color(1);
+								add_to_render_group(data, e_shader_mesh, e_texture_checkpoint, e_mesh_cube);
+								z += c_checkpoint_step;
+							}
+						}
+						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+						// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw player start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+						{
+							s_m4 model = m4_translate(player_pos);
+							scale_m4_by_radius(&model, c_player_radius);
+							draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
+						}
+						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw player end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+						{
+							s_render_flush_data data = make_render_flush_data(cam_pos);
+							data.projection = perspective;
+							data.view = view;
+							data.light_projection = light_projection;
+							data.light_view = light_view;
+							render_flush(data, true);
+						}
+
 					}
-				}
-				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw projectiles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-				soft_data->hovered_boost = -1;
-				foreach_val(boost_i, boost, soft_data->speed_boost_arr) {
-					s_m4 model = m4_translate(boost.pos);
-					scale_m4_by_radius(&model, c_boost_radius);
-					s_v4 color = make_color(0.1f, 1, 0.1f);
-					if(is_boost_hovered(ray_p, boost.pos)) {
-						color = make_color(0.5f, 1, 0.5f);
-						soft_data->hovered_boost = boost_i;
+
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					if(fabsf(cam_pos.z - c_goal_pos.z) < 100) {
+						{
+							s_instance_data data = zero;
+							data.model = m4_translate(v3(0.0f, 0.0f, c_goal_pos.z));
+							scale_m4_by_radius(&data.model, 20);
+							data.color = make_color(1);
+							add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
+						}
+
+						{
+							s_render_flush_data data = make_render_flush_data(cam_pos);
+							data.projection = perspective;
+							data.view = view;
+							data.light_projection = light_projection;
+							data.light_view = light_view;
+							data.blend_mode = e_blend_mode_normal;
+							data.depth_mode = e_depth_mode_no_read_no_write;
+							render_flush(data, true);
+						}
 					}
-					draw_mesh(e_mesh_sphere, model, color, e_shader_mesh);
-				}
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-				{
-					float z = 10;
-					while(z < c_bottom) {
-						s_instance_data data = zero;
-						data.model = m4_translate(v3(0.0f, 0.0f, -z));
-						data.model = m4_multiply(data.model, m4_rotate(game->render_time, v3(0, 0, 1)));
-						data.model = m4_multiply(data.model, m4_scale(v3(3)));
-						data.color = make_color(1);
-						add_to_render_group(data, e_shader_mesh, e_texture_checkpoint, e_mesh_cube);
-						z += c_checkpoint_step;
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					{
+						s_particle_spawn_data data = zero;
+						data.shrink = 0.5f;
+						data.duration = 0.5f;
+						data.duration_rand = 0.5f;
+						data.radius = 1.5f;
+						data.radius_rand = 0.25f;
+						data.color = hex_to_rgb(0xFAD201);
+						data.color_rand = 1.0f;
+						data.dir = v3(0.5f, 1, 1.0f);
+						data.dir_rand = v3(1);
+						data.speed = 0.01f;
+						data.speed_rand = 0.5f;
+
+						s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
+						spawn_particles(1, player_pos + pos, data);
 					}
-				}
-				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-				// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw player start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-				{
-					s_m4 model = m4_translate(player_pos);
-					scale_m4_by_radius(&model, c_player_radius);
-					draw_mesh(e_mesh_sphere, model, make_color(1), e_shader_mesh);
-				}
-				// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw player end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+					{
+						s_particle_spawn_data data = zero;
+						data.shrink = 0.5f;
+						data.duration = 0.5f;
+						data.duration_rand = 0.5f;
+						data.radius = 1.5f;
+						data.radius_rand = 0.25f;
+						data.color = hex_to_rgb(0x0);
+						data.dir = v3(0.5f, 1, 1.0f);
+						data.dir_rand = v3(1);
+						data.speed = 0.01f;
+						data.speed_rand = 0.5f;
 
-				{
-					s_render_flush_data data = make_render_flush_data(cam_pos);
-					data.projection = perspective;
-					data.view = view;
-					data.light_projection = light_projection;
-					data.light_view = light_view;
-					render_flush(data, true);
-				}
-
-			}
-			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		render scene end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-
-			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw goal start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-			if(fabsf(cam_pos.z - c_goal_pos.z) < 100) {
-				{
-					// nocheckin
-					s_instance_data data = zero;
-					data.model = m4_translate(v3(0.0f, 0.0f, c_goal_pos.z));
-					scale_m4_by_radius(&data.model, 20);
-					data.color = make_color(1);
-					// add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
-				}
-
-				{
-					s_render_flush_data data = make_render_flush_data(cam_pos);
-					data.projection = perspective;
-					data.view = view;
-					data.light_projection = light_projection;
-					data.light_view = light_view;
-					data.blend_mode = e_blend_mode_normal;
-					data.depth_mode = e_depth_mode_no_read_no_write;
-					render_flush(data, true);
-				}
-			}
-			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw goal end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-			{
-				s_particle_spawn_data data = zero;
-				data.shrink = 0.5f;
-				data.duration = 0.5f;
-				data.duration_rand = 0.5f;
-				data.radius = 1.5f;
-				data.radius_rand = 0.25f;
-				data.color = hex_to_rgb(0xFAD201);
-				data.color_rand = 1.0f;
-				data.dir = v3(0.5f, 1, 1.0f);
-				data.dir_rand = v3(1);
-				data.speed = 0.01f;
-				data.speed_rand = 0.5f;
-
-				s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
-				spawn_particles(1, player_pos + pos, data);
-			}
-
-			{
-				s_particle_spawn_data data = zero;
-				data.shrink = 0.5f;
-				data.duration = 0.5f;
-				data.duration_rand = 0.5f;
-				data.radius = 1.5f;
-				data.radius_rand = 0.25f;
-				data.color = hex_to_rgb(0x0);
-				data.dir = v3(0.5f, 1, 1.0f);
-				data.dir_rand = v3(1);
-				data.speed = 0.01f;
-				data.speed_rand = 0.5f;
-
-				spawn_particles(4, ray_at_y(ray, 0.0f), data);
-			}
-
-			update_particles();
-			{
-				s_render_flush_data data = make_render_flush_data(cam_pos);
-				data.projection = perspective;
-				data.view = view;
-				data.blend_mode = e_blend_mode_additive;
-				data.depth_mode = e_depth_mode_read_no_write;
-				render_flush(data, true);
-			}
-			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		particles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-			{
-				draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
-				s_render_flush_data data = make_render_flush_data(cam_pos);
-				data.projection = ortho;
-				data.blend_mode = e_blend_mode_normal;
-				data.depth_mode = e_depth_mode_no_read_no_write;
-				render_flush(data, true);
-			}
-			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		post end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-			// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		fct start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-			{
-			// 	foreach_ptr(fct_i, fct, hard_data->fct_arr) {
-			// 		float passed = at_most(1.0f, game->render_time - fct->spawn_timestamp);
-			// 		fct->pos = lerp_v3(fct->start_pos, fct->target_pos, passed);
-			// 		draw_text_world(fct->text, fct->pos, 1.0f, make_color(1), true, &game->font);
-			// 	}
-
-			// 	s_render_flush_data data = make_render_flush_data(cam_pos);
-			// 	data.projection = perspective;
-			// 	data.view = view;
-			// 	data.blend_mode = e_blend_mode_normal;
-			// 	data.depth_mode = e_depth_mode_no_read_no_write;
-			// 	render_flush(data, true);
-			}
-			// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		fct end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-			{
-				s_v2 pos = v2(4);
-				constexpr float font_size = 48;
-				{
-					s_time_format format = update_count_to_time_format(hard_data->update_count);
-					s_len_str text = format_text("%02d:%02d:%02d.%i", format.hours, format.minutes, format.seconds, format.milliseconds);
-					draw_text(text, pos, font_size, make_color(1), false, &game->font);
-					pos.y += font_size;
-				}
-				{
-					s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
-					draw_text(text, pos, font_size, make_color(1), false, &game->font);
-					pos.y += font_size;
-				}
-			}
-
-			{
-				s_render_flush_data data = make_render_flush_data(cam_pos);
-				data.projection = ortho;
-				data.blend_mode = e_blend_mode_normal;
-				data.depth_mode = e_depth_mode_no_read_no_write;
-				render_flush(data, true);
-			}
-
-			if(soft_data->state == e_game_state_pre_victory) {
-				{
-					s_time_data time_data = get_time_data(
-						game->render_time, soft_data->pre_victory_timestamp, c_pre_victory_duration
-					);
-					if(time_data.percent >= 1) {
-						soft_data->state = e_game_state_victory;
+						spawn_particles(4, ray_at_y(ray, 0.0f), data);
 					}
-					s_instance_data data = zero;
-					data.model = fullscreen_m4();
-					data.color = make_color(0, time_data.percent);
-					add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
+
+					update_particles();
+					{
+						s_render_flush_data data = make_render_flush_data(cam_pos);
+						data.projection = perspective;
+						data.view = view;
+						data.blend_mode = e_blend_mode_additive;
+						data.depth_mode = e_depth_mode_read_no_write;
+						render_flush(data, true);
+					}
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		particles end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		post start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+					{
+						draw_texture_screen(c_world_center, c_world_size, make_color(1), e_texture_white, e_shader_post, zero, zero);
+						s_render_flush_data data = make_render_flush_data(cam_pos);
+						data.projection = ortho;
+						data.blend_mode = e_blend_mode_normal;
+						data.depth_mode = e_depth_mode_no_read_no_write;
+						render_flush(data, true);
+					}
+					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		post end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+					{
+						s_v2 pos = v2(4);
+						constexpr float font_size = 48;
+						{
+							s_time_format format = update_count_to_time_format(hard_data->update_count);
+							s_len_str text = format_text("%02d:%02d.%i", format.minutes, format.seconds, format.milliseconds);
+							draw_text(text, pos, font_size, make_color(1), false, &game->font);
+							pos.y += font_size;
+						}
+						{
+							s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
+							draw_text(text, pos, font_size, make_color(1), false, &game->font);
+							pos.y += font_size;
+						}
+					}
+
+					{
+						s_render_flush_data data = make_render_flush_data(cam_pos);
+						data.projection = ortho;
+						data.blend_mode = e_blend_mode_normal;
+						data.depth_mode = e_depth_mode_no_read_no_write;
+						render_flush(data, true);
+					}
+
+					if(soft_data->state == e_game_state1_pre_victory) {
+						{
+							s_time_data time_data = get_time_data(
+								game->render_time, soft_data->pre_victory_timestamp, c_pre_victory_duration
+							);
+							if(time_data.percent >= 1) {
+								if(game->leaderboard_nice_name.count <= 0 && c_on_web) {
+									set_temp_state0_next_frame(e_game_state0_input_name);
+								}
+								else {
+									set_state0_next_frame(e_game_state0_win_leaderboard);
+									game->update_count_at_win_time = hard_data->update_count;
+									#if defined(__EMSCRIPTEN__)
+									submit_leaderboard_score(hard_data->update_count, c_leaderboard_id);
+									#endif
+								}
+							}
+							s_instance_data data = zero;
+							data.model = fullscreen_m4();
+							data.color = make_color(0, time_data.percent);
+							add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
+						}
+						{
+							s_render_flush_data data = make_render_flush_data(cam_pos);
+							data.projection = ortho;
+							data.blend_mode = e_blend_mode_normal;
+							data.depth_mode = e_depth_mode_no_read_no_write;
+							render_flush(data, true);
+						}
+					}
+				} break;
+
+			}
+
+
+		} break;
+		// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		play end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+		case e_game_state0_input_name: {
+			s_input_name_state* state = &game->input_name_state;
+			float font_size = 36;
+			s_v2 pos = c_world_size * v2(0.5f, 0.4f);
+
+			int count_before = state->name.str.count;
+			b8 submitted = handle_string_input(&state->name, game->render_time);
+			int count_after = state->name.str.count;
+			if(count_before != count_after) {
+				play_sound(e_sound_key);
+			}
+			if(submitted) {
+				b8 can_submit = true;
+				if(state->name.str.count < 2) {
+					can_submit = false;
+					cstr_into_builder(&state->error_str, "Name must have at least 2 characters!");
 				}
-				{
-					s_render_flush_data data = make_render_flush_data(cam_pos);
-					data.projection = ortho;
-					data.blend_mode = e_blend_mode_normal;
-					data.depth_mode = e_depth_mode_no_read_no_write;
-					render_flush(data, true);
+				if(can_submit) {
+					state->error_str.count = 0;
+					#if defined(__EMSCRIPTEN__)
+					set_leaderboard_name(builder_to_len_str(&state->name.str));
+					#endif
+					game->leaderboard_nice_name = state->name.str;
 				}
-		}
+			}
+
+			draw_text(S("Victory!"), c_world_size * v2(0.5f, 0.1f), font_size, make_color(1), true, &game->font);
+			draw_text(S("Enter your name"), c_world_size * v2(0.5f, 0.2f), font_size, make_color(1), true, &game->font);
+			if(state->error_str.count > 0) {
+				draw_text(builder_to_len_str(&state->error_str), c_world_size * v2(0.5f, 0.3f), font_size, hex_to_rgb(0xD77870), true, &game->font);
+			}
+
+			if(state->name.str.count > 0) {
+				draw_text(builder_to_len_str(&state->name.str), pos, font_size, make_color(1), true, &game->font);
+			}
+
+			s_v2 full_text_size = get_text_size(builder_to_len_str(&state->name.str), &game->font, font_size);
+			s_v2 partial_text_size = get_text_size_with_count(builder_to_len_str(&state->name.str), &game->font, font_size, state->name.cursor.value, 0);
+			s_v2 cursor_pos = v2(
+				-full_text_size.x * 0.5f + pos.x + partial_text_size.x,
+				pos.y - font_size * 0.5f
+			);
+
+			s_v2 cursor_size = v2(15.0f, font_size);
+			float t = game->render_time - max(state->name.last_action_time, state->name.last_edit_time);
+			b8 blink = false;
+			constexpr float c_blink_rate = 0.75f;
+			if(t > 0.75f && fmodf(t, c_blink_rate) >= c_blink_rate / 2) {
+				blink = true;
+			}
+			float t2 = clamp(game->render_time - state->name.last_edit_time, 0.0f, 1.0f);
+			s_v4 color = lerp_color(hex_to_rgb(0xffdddd), brighter(hex_to_rgb(0xABC28F), 0.8f), 1 - powf(1 - t2, 3));
+			float extra_height = ease_out_elastic2_advanced(t2, 0, 0.75f, 20, 0);
+			cursor_size.y += extra_height;
+
+			if(!state->name.visual_pos_initialized) {
+				state->name.visual_pos_initialized = true;
+				state->name.cursor_visual_pos = cursor_pos;
+			}
+			else {
+				state->name.cursor_visual_pos = lerp_snap(state->name.cursor_visual_pos, cursor_pos, delta * 20);
+			}
+
+			if(!blink) {
+				draw_rect_topleft(state->name.cursor_visual_pos - v2(0.0f, extra_height / 2), cursor_size, color);
+			}
+
+			s_render_flush_data data = make_render_flush_data(cam_pos);
+			data.projection = ortho;
+			data.blend_mode = e_blend_mode_normal;
+			data.depth_mode = e_depth_mode_no_read_no_write;
+			render_flush(data, true);
 
 		} break;
 
-		case e_game_state_victory: {
-
-		} break;
 	}
-
 
 	SDL_GL_SwapWindow(g_platform_data->window);
 
@@ -963,6 +1218,12 @@ func void draw_rect(s_v2 pos, s_v2 size, s_v4 color)
 	data.color = color;
 
 	add_to_render_group(data, e_shader_mesh, e_texture_white, e_mesh_quad);
+}
+
+func void draw_rect_topleft(s_v2 pos, s_v2 size, s_v4 color)
+{
+	pos += size * 0.5f;
+	draw_rect(pos, size, color);
 }
 
 func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id, s_v2 uv_min, s_v2 uv_max)
@@ -1039,6 +1300,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		uniform_data.light_projection = data.light_projection;
 		uniform_data.render_time = game->render_time;
 		uniform_data.cam_pos = data.cam_pos;
+		uniform_data.mouse = g_mouse;
 		// data.view = render_pass_data.view;
 		// data.projection = render_pass_data.projection;
 		// data.base_res = g_base_res;
@@ -1716,6 +1978,9 @@ func s_font load_font_from_file(char* file, int font_size, s_linear_arena* arena
 		glyph->uv_min.x = column / (float)columns;
 		glyph->uv_max.x = glyph->uv_min.x + (glyph->width / (float)total_width);
 
+		// @Hack(tkap, 07/04/2025): Without this letters are cut off on the left side
+		glyph->uv_min.x -= 0.001f;
+
 		glyph->uv_min.y = row / (float)rows;
 
 		// @Note(tkap, 17/05/2023): For some reason uv_max.y is off by 1 pixel (checked the texture in renderoc), which causes the text to be slightly miss-positioned
@@ -1964,7 +2229,7 @@ func b8 can_continue_identifier(char c)
 func s_len_str format_text(const char* text, ...)
 {
 	static constexpr int max_format_text_buffers = 16;
-	static constexpr int max_text_buffer_length = 256;
+	static constexpr int max_text_buffer_length = 512;
 
 	static char buffers[max_format_text_buffers][max_text_buffer_length] = {};
 	static int index = 0;
@@ -2223,4 +2488,289 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
 	}
 
 	return result;
+}
+
+func char* skip_whitespace(char* str)
+{
+	while(true) {
+		if(*str == '0') { break; }
+		else if(*str <= ' ') { str += 1; }
+		else { break; }
+	}
+	return str;
+}
+
+func void set_state0_next_frame(e_game_state0 state)
+{
+	s_state next_state = zero;
+	next_state.value = state;
+	game->next_state = maybe(next_state);
+}
+
+func void set_temp_state0_next_frame(e_game_state0 state)
+{
+	s_state next_state = zero;
+	next_state.value = state;
+	next_state.temporary = true;
+	game->next_state = maybe(next_state);
+}
+
+func void pop_game_state()
+{
+	game->pop_state = true;
+}
+
+func s_v2 wxy(float x, float y)
+{
+	s_v2 result = c_world_size * v2(x, y);
+	return result;
+}
+
+func s_v2 wcxy(float x, float y)
+{
+	s_v2 result = c_world_center * v2(x, y);
+	return result;
+}
+
+func b8 do_button(s_len_str text, s_v2 pos, b8 centered)
+{
+	s_v2 size = v2(256, 48);
+	b8 result = false;
+	if(!centered) {
+		pos += size * 0.5f;
+	}
+
+	b8 hovered = mouse_vs_rect_center(pos, size);
+	s_v4 color = make_color(0.25f);
+	if(hovered) {
+		size += v2(8);
+		if(!centered) {
+			pos += v2(8) * 0.5f;
+		}
+		color = make_color(0.5f);
+		if(g_click) {
+			result = true;
+			play_sound(e_sound_click);
+		}
+	}
+
+	{
+		s_instance_data data = zero;
+		data.model = m4_translate(v3(pos, 0));
+		data.model = m4_multiply(data.model, m4_scale(v3(size, 1)));
+		data.color = color,
+		add_to_render_group(data, e_shader_button, e_texture_white, e_mesh_quad);
+	}
+
+	draw_text(text, pos, 32.0f, make_color(1), true, &game->font);
+
+	return result;
+}
+
+
+func b8 rect_vs_rect_topleft(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1)
+{
+	b8 result = pos0.x + size0.x > pos1.x && pos0.x < pos1.x + size1.x &&
+		pos0.y + size0.y > pos1.y && pos0.y < pos1.y + size1.y;
+	return result;
+}
+
+func b8 rect_vs_rect_center(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1)
+{
+	b8 result = rect_vs_rect_topleft(pos0 - size0 * 0.5f, size0, pos1 - size1 * 0.5f, size1);
+	return result;
+}
+
+func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size)
+{
+	b8 result = rect_vs_rect_topleft(g_mouse, v2(1), pos, size);
+	return result;
+}
+
+func b8 mouse_vs_rect_center(s_v2 pos, s_v2 size)
+{
+	b8 result = rect_vs_rect_center(g_mouse, v2(1), pos, size);
+	return result;
+}
+
+func b8 is_key_pressed(int key, b8 consume)
+{
+	b8 result = false;
+	if(key < c_max_keys) {
+		result = game->input_arr[key].half_transition_count > 1 || (game->input_arr[key].half_transition_count > 0 && game->input_arr[key].is_down);
+	}
+	if(result && consume) {
+		game->input_arr[key].half_transition_count = 0;
+		game->input_arr[key].is_down = false;
+	}
+	return result;
+}
+
+template <int n>
+func void cstr_into_builder(s_str_builder<n>* builder, char* str)
+{
+	assert(str);
+
+	int len = (int)strlen(str);
+	assert(len <= n);
+	memcpy(builder->data, str, len);
+	builder->count = len;
+}
+
+template <int n>
+func s_len_str builder_to_len_str(s_str_builder<n>* builder)
+{
+	s_len_str result = zero;
+	result.str = builder->data;
+	result.len = builder->count;
+	return result;
+}
+
+template <int n>
+func char* builder_to_cstr(s_str_builder<n>* builder, s_circular_arena* arena)
+{
+	char* result = (char*)circular_arena_alloc(arena, builder->count + 1);
+	memcpy(result, builder->data, builder->count);
+	result[builder->count] = '\0';
+	return result;
+}
+
+template <int n0, int n1>
+func b8 builder_equals(s_str_builder<n0>* a, s_str_builder<n1>* b)
+{
+	b8 result = a->count == b->count && memcmp(a->data, b->data, a->count) == 0;
+	return result;
+}
+
+template <int n>
+func b8 handle_string_input(s_input_str<n>* str, float time)
+{
+	b8 result = false;
+	if(!str->cursor.valid) {
+		str->cursor = maybe(0);
+	}
+	foreach_val(c_i, c, game->char_events) {
+		if(is_alpha_numeric(c) || c == '_') {
+			if(!is_builder_full(&str->str)) {
+				builder_insert(&str->str, str->cursor.value, c);
+				str->cursor.value += 1;
+				str->last_edit_time = time;
+				str->last_action_time = str->last_edit_time;
+			}
+		}
+	}
+
+	foreach_val(event_i, event, game->key_events) {
+		if(!event.went_down) { continue; }
+		if(event.key == SDLK_RETURN) {
+			result = true;
+			str->last_action_time = time;
+		}
+		else if(event.key == SDLK_ESCAPE) {
+			str->cursor.value = 0;
+			str->str.count = 0;
+			str->str.data[0] = 0;
+			str->last_edit_time = time;
+			str->last_action_time = str->last_edit_time;
+		}
+		else if(event.key == SDLK_BACKSPACE) {
+			if(str->cursor.value > 0) {
+				str->cursor.value -= 1;
+				builder_remove_char_at(&str->str, str->cursor.value);
+				str->last_edit_time = time;
+				str->last_action_time = str->last_edit_time;
+			}
+		}
+	}
+	return result;
+}
+
+func void handle_key_event(int key, b8 is_down, b8 is_repeat)
+{
+	if(is_down) {
+		game->any_key_pressed = true;
+	}
+	if(key < c_max_keys) {
+		if(!is_repeat) {
+			game->any_key_pressed = true;
+		}
+
+		{
+			s_key_event key_event = {};
+			key_event.went_down = is_down;
+			key_event.key = key;
+			// key_event.modifiers |= e_input_modifier_ctrl * is_key_down(&g_platform_data.input, c_key_left_ctrl);
+			game->key_events.add(key_event);
+		}
+	}
+}
+
+template <int n>
+func b8 is_builder_full(s_str_builder<n>* builder)
+{
+	b8 result = builder->count >= n;
+	return result;
+}
+
+template <int n>
+func void builder_insert(s_str_builder<n>* builder, int index, char c)
+{
+	assert(index >= 0);
+	assert(index <= builder->count);
+	int num_to_the_right = builder->count - index;
+	if(num_to_the_right > 0) {
+		memmove(&builder->data[index + 1], &builder->data[index], num_to_the_right);
+	}
+	builder->data[index] = c;
+	builder->count += 1;
+}
+
+template <int n>
+func void builder_remove_char_at(s_str_builder<n>* builder, int index)
+{
+	assert(index >= 0);
+	assert(index < builder->count);
+
+	builder->count -= 1;
+	memmove(&builder->data[index], &builder->data[index + 1], builder->count - index);
+	builder->data[builder->count] = 0;
+}
+
+func void do_leaderboard()
+{
+	b8 escape = is_key_pressed(SDLK_ESCAPE, true);
+	if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
+		set_state0_next_frame(e_game_state0_main_menu);
+		game->clear_state = true;
+	}
+
+	{
+		if(!game->leaderboard_received) {
+			draw_text(S("Getting leaderboard..."), c_world_center, 48, make_color(0.66f), true, &game->font);
+		}
+		else if(game->leaderboard_arr.count <= 0) {
+			draw_text(S("No scores yet :("), c_world_center, 48, make_color(0.66f), true, &game->font);
+		}
+
+		constexpr int c_max_visible_entries = 10;
+		s_v2 pos = c_world_center * v2(1.0f, 0.7f);
+		for(int entry_i = 0; entry_i < at_most(c_max_visible_entries + 1, game->leaderboard_arr.count); entry_i += 1) {
+			s_leaderboard_entry entry = game->leaderboard_arr[entry_i];
+			s_time_format data = update_count_to_time_format(entry.time);
+			s_v4 color = make_color(0.8f);
+			int rank_number = entry_i + 1;
+			if(entry_i == c_max_visible_entries || builder_equals(&game->leaderboard_public_uid, &entry.internal_name)) {
+				color = hex_to_rgb(0xD3A861);
+				rank_number = entry.rank;
+			}
+			char* name = entry.internal_name.data;
+			if(entry.nice_name.count > 0) {
+				name = entry.nice_name.data;
+			}
+			draw_text(format_text("%i %s", rank_number, name), v2(c_world_size.x * 0.1f, pos.y - 24), 32, color, false, &game->font);
+			s_len_str text = format_text("%02i:%02i.%i", data.minutes, data.seconds, data.milliseconds);
+			draw_text(text, v2(c_world_size.x * 0.5f, pos.y - 24), 32, color, false, &game->font);
+			pos.y += 48;
+		}
+	}
 }

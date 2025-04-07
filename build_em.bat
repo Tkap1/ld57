@@ -4,6 +4,8 @@ cls
 
 SETLOCAL ENABLEDELAYEDEXPANSION
 
+func_decl_gen.exe src/*
+
 set comp=
 set comp=!comp! -I"C:\Users\34687\Desktop\Dev\C\sdl"
 set comp=!comp! -I"C:\Users\34687\Desktop\Dev\C\SDL_mixer\include"
@@ -21,7 +23,7 @@ set comp=!comp! --preload-file ../shaders@shaders
 set comp=!comp! --preload-file ../assets@assets
 set comp=!comp! --preload-file ../src/shader_shared.h@src/shader_shared.h
 
-set debug=0
+set debug=1
 if !debug!==0 (
 	set comp=!comp! -O3
 	set comp=!comp! -sSAFE_HEAP=0
@@ -29,10 +31,10 @@ if !debug!==0 (
 ) else (
 	set comp=!comp! -Dm_debug
 	set comp=!comp! -O0
-	set comp=!comp! -sSAFE_HEAP=1
+	set comp=!comp! -sSAFE_HEAP=0
 	set comp=!comp! -sASSERTIONS=1
 	set comp=!comp! -gsource-map
-	@REM set comp=!comp! -fsanitize=address
+	set comp=!comp! -fsanitize=address
 )
 
 @REM -sFULL_ES3

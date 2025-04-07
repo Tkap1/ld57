@@ -4,6 +4,7 @@ func void render(float interp_dt, float delta);
 func f64 get_seconds();
 func void on_gl_error(const char* expr, char* file, int line, int error);
 func void draw_rect(s_v2 pos, s_v2 size, s_v4 color);
+func void draw_rect_topleft(s_v2 pos, s_v2 size, s_v4 color);
 func void draw_texture_screen(s_v2 pos, s_v2 size, s_v4 color, e_texture texture_id, e_shader shader_id, s_v2 uv_min, s_v2 uv_max);
 func void draw_mesh(e_mesh mesh_id, s_m4 model, s_v4 color, e_shader shader_id);
 func void draw_mesh(e_mesh mesh_id, s_v3 pos, s_v3 size, s_v4 color, e_shader shader_id);
@@ -62,3 +63,33 @@ func s_m4 fullscreen_m4();
 func s_time_data get_time_data(float curr, float timestamp, float duration);
 func s_time_format update_count_to_time_format(int update_count);
 func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena);
+func char* skip_whitespace(char* str);
+func void set_state0_next_frame(e_game_state0 state);
+func void set_temp_state0_next_frame(e_game_state0 state);
+func void pop_game_state();
+func s_v2 wxy(float x, float y);
+func s_v2 wcxy(float x, float y);
+func b8 do_button(s_len_str text, s_v2 pos, b8 centered);
+func b8 rect_vs_rect_topleft(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1);
+func b8 rect_vs_rect_center(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1);
+func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size);
+func b8 mouse_vs_rect_center(s_v2 pos, s_v2 size);
+func b8 is_key_pressed(int key, b8 consume);
+template <int n>
+func void cstr_into_builder(s_str_builder<n>* builder, char* str);
+template <int n>
+func s_len_str builder_to_len_str(s_str_builder<n>* builder);
+template <int n>
+func char* builder_to_cstr(s_str_builder<n>* builder, s_circular_arena* arena);
+template <int n0, int n1>
+func b8 builder_equals(s_str_builder<n0>* a, s_str_builder<n1>* b);
+template <int n>
+func b8 handle_string_input(s_input_str<n>* str, float time);
+func void handle_key_event(int key, b8 is_down, b8 is_repeat);
+template <int n>
+func b8 is_builder_full(s_str_builder<n>* builder);
+template <int n>
+func void builder_insert(s_str_builder<n>* builder, int index, char c);
+template <int n>
+func void builder_remove_char_at(s_str_builder<n>* builder, int index);
+func void do_leaderboard();

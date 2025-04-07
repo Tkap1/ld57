@@ -133,26 +133,26 @@ struct s_ray_collision
 
 
 template <typename t>
-static constexpr t at_least(t a, t b)
+func constexpr t at_least(t a, t b)
 {
 	return a > b ? a : b;
 }
 
 template <typename t>
-static constexpr t at_most(t a, t b)
+func constexpr t at_most(t a, t b)
 {
 	return b > a ? a : b;
 }
 
 template <typename t>
-static constexpr t clamp(t current, t min_val, t max_val)
+func constexpr t clamp(t current, t min_val, t max_val)
 {
 	return at_most(max_val, at_least(min_val, current));
 }
 
 
 template <typename t0, typename t1>
-static constexpr s_v2 v2(t0 x, t1 y)
+func constexpr s_v2 v2(t0 x, t1 y)
 {
 	s_v2 result = zero;
 	result.x = (float)x;
@@ -161,7 +161,7 @@ static constexpr s_v2 v2(t0 x, t1 y)
 }
 
 template <typename t0>
-static constexpr s_v2 v2(t0 x)
+func constexpr s_v2 v2(t0 x)
 {
 	s_v2 result = zero;
 	result.x = (float)x;
@@ -169,7 +169,7 @@ static constexpr s_v2 v2(t0 x)
 	return result;
 }
 
-static constexpr s_v2 v2(s_v2i v)
+func constexpr s_v2 v2(s_v2i v)
 {
 	s_v2 result = zero;
 	result.x = (float)v.x;
@@ -178,7 +178,7 @@ static constexpr s_v2 v2(s_v2i v)
 }
 
 template <typename t0, typename t1, typename t2>
-static constexpr s_v3 v3(t0 x, t1 y, t2 z)
+func constexpr s_v3 v3(t0 x, t1 y, t2 z)
 {
 	s_v3 result = zero;
 	result.x = (float)x;
@@ -188,7 +188,7 @@ static constexpr s_v3 v3(t0 x, t1 y, t2 z)
 }
 
 template <typename t0>
-static constexpr s_v3 v3(s_v2 xy, t0 z)
+func constexpr s_v3 v3(s_v2 xy, t0 z)
 {
 	s_v3 result = zero;
 	result.x = xy.x;
@@ -198,7 +198,7 @@ static constexpr s_v3 v3(s_v2 xy, t0 z)
 }
 
 template <typename t0>
-static constexpr s_v3 v3(t0 x)
+func constexpr s_v3 v3(t0 x)
 {
 	s_v3 result = zero;
 	result.x = (float)x;
@@ -208,7 +208,7 @@ static constexpr s_v3 v3(t0 x)
 }
 
 template <typename t0, typename t1, typename t2, typename t3>
-static constexpr s_v4 v4(t0 x, t1 y, t2 z, t3 w)
+func constexpr s_v4 v4(t0 x, t1 y, t2 z, t3 w)
 {
 	s_v4 result = zero;
 	result.x = (float)x;
@@ -219,7 +219,7 @@ static constexpr s_v4 v4(t0 x, t1 y, t2 z, t3 w)
 }
 
 template <typename t0>
-static constexpr s_v4 v4(s_v3 v, t0 w)
+func constexpr s_v4 v4(s_v3 v, t0 w)
 {
 	s_v4 result = zero;
 	result.x = v.x;
@@ -351,7 +351,7 @@ func constexpr s_quaternion make_quaternion()
 
 // -------------------------------------------------------------------------------------------
 
-static s_m4 m4_scale(s_v3 v)
+func s_m4 m4_scale(s_v3 v)
 {
 	s_m4 result = {
 		v.x, 0, 0, 0,
@@ -362,7 +362,7 @@ static s_m4 m4_scale(s_v3 v)
 	return result;
 }
 
-static s_m4 m4_translate(s_v3 v)
+func s_m4 m4_translate(s_v3 v)
 {
 	s_m4 result = {
 		1, 0, 0, 0,
@@ -373,7 +373,7 @@ static s_m4 m4_translate(s_v3 v)
 	return result;
 }
 
-static s_m4 m4_identity()
+func s_m4 m4_identity()
 {
 	s_m4 result = zero;
 	result.all2[0][0] = 1;
@@ -383,7 +383,7 @@ static s_m4 m4_identity()
 	return result;
 }
 
-static s_m4 m4_multiply(s_m4 a, s_m4 b)
+func s_m4 m4_multiply(s_m4 a, s_m4 b)
 {
 	s_m4 result = zero;
 	for(int i = 0; i < 4; i += 1) {
@@ -682,7 +682,7 @@ func void swap(t* a, t* b)
 }
 
 [[nodiscard]]
-static int circular_index(int index, int size)
+func int circular_index(int index, int size)
 {
 	assert(size > 0);
 	if(index >= 0) {
@@ -878,7 +878,7 @@ func float range_lerp(float input_val, float input_start, float input_end, float
 }
 
 template <typename t>
-static t min(t a, t b)
+func t min(t a, t b)
 {
 	return a <= b ? a : b;
 }
@@ -890,7 +890,7 @@ func s_v3 v3_set_mag(s_v3 v, float len)
 	return v;
 }
 
-static float smoothstep(float edge0, float edge1, float x)
+func float smoothstep(float edge0, float edge1, float x)
 {
 	// Scale, bias and saturate x to 0..1 range
 	x = clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
@@ -898,7 +898,7 @@ static float smoothstep(float edge0, float edge1, float x)
 	return x * x * (3 - 2 * x);
 }
 
-static float ilerp(float start, float end, float val)
+func float ilerp(float start, float end, float val)
 {
 	float b = end - start;
 	if(b == 0) { return val; }
@@ -983,4 +983,128 @@ func t max(t a, t b)
 {
 	t result = a > b ? a : b;
 	return result;
+}
+
+[[nodiscard]]
+func float ilerp_clamp(float start, float end, float value)
+{
+	return ilerp(start, end, clamp(value, start, end));
+}
+
+func float handle_advanced_easing(float x, float x_start, float x_end)
+{
+	x = clamp(ilerp_clamp(x_start, x_end, x), 0.0f, 1.0f);
+	return x;
+}
+
+func float ease_in_expo(float x)
+{
+	if(x == 0) { return 0; }
+	return powf(2, 10 * x - 10);
+}
+
+func float ease_linear(float x)
+{
+	return x;
+}
+
+func float ease_in_quad(float x)
+{
+	return x * x;
+}
+
+func float ease_out_quad(float x)
+{
+	float x2 = 1 - x;
+	return 1 - x2 * x2;
+}
+
+func float ease_out_expo(float x)
+{
+	if(x == 1) { return 1; }
+	return 1 - powf(2, -10 * x);
+}
+
+func float ease_out_elastic(float x)
+{
+	constexpr float c4 = (2 * c_pi) / 3;
+	if(x == 0 || x == 1) { return x; }
+	return powf(2, -5 * x) * sinf((x * 5 - 0.75f) * c4) + 1;
+}
+
+func float ease_out_elastic2(float x)
+{
+	constexpr float c4 = (2 * c_pi) / 3;
+	if(x == 0 || x == 1) { return x; }
+	return powf(2, -10 * x) * sinf((x * 10 - 0.75f) * c4) + 1;
+}
+
+func float ease_out_back(float x)
+{
+	float c1 = 1.70158f;
+	float c3 = c1 + 1;
+	return 1 + c3 * powf(x - 1, 3) + c1 * powf(x - 1, 2);
+}
+
+#define m_advanced_easings \
+X(ease_linear, e_ease_linear) \
+X(ease_in_expo, e_ease_in_expo) \
+X(ease_in_quad, e_ease_in_quad) \
+X(ease_out_quad, e_ease_out_quad) \
+X(ease_out_expo, e_ease_out_expo) \
+X(ease_out_elastic, e_ease_out_elastic) \
+X(ease_out_elastic2, e_ease_out_elastic2) \
+X(ease_out_back, e_ease_out_back) \
+
+#define X(fname, ename) \
+func float fname##_advanced(float x, float x_start, float x_end, float target_start, float target_end) \
+{ \
+	x = handle_advanced_easing(x, x_start, x_end); \
+	return lerp(target_start, target_end, fname(x)); \
+}
+m_advanced_easings
+#undef X
+
+func float lerp_snap(float a, float b, float t, float max_diff)
+{
+	float result = a + (b - a) * t;
+	if(fabsf(result - b) < max_diff) {
+		result = b;
+	}
+	return result;
+}
+
+func s_v2 lerp_snap(s_v2 a, s_v2 b, float t)
+{
+	s_v2 result;
+	float dist = v2_distance(a, b);
+	if(dist < 1.0f) {
+		t = 1;
+	}
+	result.x = lerp(a.x, b.x, t);
+	result.y = lerp(a.y, b.y, t);
+	return result;
+}
+
+func s_v2 lerp_snap(s_v2 a, s_v2 b, float t, s_v2 max_diff)
+{
+	s_v2 result;
+	result.x = lerp_snap(a.x, b.x, t, max_diff.x);
+	result.y = lerp_snap(a.y, b.y, t, max_diff.y);
+	return result;
+}
+
+func float v2_distance(s_v2 a, s_v2 b)
+{
+	return v2_length(a - b);
+}
+
+func float v2_length(s_v2 a)
+{
+	return sqrtf(a.x * a.x + a.y * a.y);
+}
+
+static float sin_range(float min_val, float max_val, float x)
+{
+	return lerp(min_val, max_val, sinf(x) * 0.5f + 0.5f);
 }

@@ -1,3 +1,7 @@
+func s_m4 m4_scale(s_v3 v);
+func s_m4 m4_translate(s_v3 v);
+func s_m4 m4_identity();
+func s_m4 m4_multiply(s_m4 a, s_m4 b);
 func s_m4 make_orthographic(float left, float right, float bottom, float top, float near, float far);
 func s_m4 make_perspective(float FOV, float AspectRatio, float Near, float Far);
 func s_m4 look_at(s_v3 eye, s_v3 target, s_v3 up);
@@ -18,13 +22,18 @@ func float quaternion_dot(s_quaternion Left, s_quaternion Right);
 func s_quaternion quaternion_normalized(s_quaternion Left);
 template <typename t>
 func void swap(t* a, t* b);
+func int circular_index(int index, int size);
 func s_ray get_camera_ray(s_v3 cam_pos, s_m4 view, s_m4 projection, s_v2 mouse, s_v2 world_size);
 func s_m4 m4_inverse(const s_m4 m);
 func s_v3 ray_at_y(s_ray ray, float y);
 func float lerp(float a, float b, float t);
 func s_v3 lerp_v3(s_v3 a, s_v3 b, float t);
 func float range_lerp(float input_val, float input_start, float input_end, float output_start, float output_end);
+template <typename t>
+func t min(t a, t b);
 func s_v3 v3_set_mag(s_v3 v, float len);
+func float smoothstep(float edge0, float edge1, float x);
+func float ilerp(float start, float end, float val);
 template <typename t>
 func void at_most_ptr(t* ptr, t max_val);
 template <typename t>
@@ -39,3 +48,18 @@ func b8 sphere_vs_sphere(s_v3 pos1, float r1, s_v3 pos2, float r2);
 func void scale_m4_by_radius(s_m4* out, float radius);
 template <typename t>
 func t max(t a, t b);
+func float ilerp_clamp(float start, float end, float value);
+func float handle_advanced_easing(float x, float x_start, float x_end);
+func float ease_in_expo(float x);
+func float ease_linear(float x);
+func float ease_in_quad(float x);
+func float ease_out_quad(float x);
+func float ease_out_expo(float x);
+func float ease_out_elastic(float x);
+func float ease_out_elastic2(float x);
+func float ease_out_back(float x);
+func float lerp_snap(float a, float b, float t, float max_diff);
+func s_v2 lerp_snap(s_v2 a, s_v2 b, float t);
+func s_v2 lerp_snap(s_v2 a, s_v2 b, float t, s_v2 max_diff);
+func float v2_distance(s_v2 a, s_v2 b);
+func float v2_length(s_v2 a);

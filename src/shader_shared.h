@@ -21,8 +21,9 @@ layout(std140) uniform ublock
 	s_v2 window_size;
 	s_v3 cam_pos;
 	float render_time;
-	// float pad0;
-	// float pad1;
+	s_v2 mouse;
+	float pad0;
+	float pad1;
 	// float pad2;
 };
 #if defined(m_cpu_side)

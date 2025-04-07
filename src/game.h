@@ -119,9 +119,10 @@ enum e_shader
 	e_shader_flat,
 	e_shader_fresnel,
 	e_shader_post,
-	e_shader_text,
 	e_shader_circle,
 	e_shader_portal,
+	e_shader_button,
+	e_shader_text,
 	e_shader_count,
 };
 
@@ -131,21 +132,10 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/flat.shader",
 	"shaders/fresnel.shader",
 	"shaders/post.shader",
-	"shaders/text.shader",
 	"shaders/circle.shader",
 	"shaders/portal.shader",
-};
-
-struct s_len_str
-{
-	char* str;
-	int len;
-
-	char operator[](int index)
-	{
-		assert(index < len);
-		return str[index];
-	}
+	"shaders/button.shader",
+	"shaders/text.shader",
 };
 
 struct s_text_iterator
@@ -173,12 +163,11 @@ global constexpr char* c_texture_path_arr[e_texture_count] = {
 	"assets/checkpoint.png",
 };
 
-enum e_game_state
+enum e_game_state1
 {
-	e_game_state_default,
-	e_game_state_defeat,
-	e_game_state_pre_victory,
-	e_game_state_victory,
+	e_game_state1_default,
+	e_game_state1_defeat,
+	e_game_state1_pre_victory,
 };
 
 struct s_sound_data
@@ -195,6 +184,9 @@ enum e_sound
 	e_sound_dash,
 	e_sound_knock,
 	e_sound_victory,
+	e_sound_click,
+	e_sound_key,
+	e_sound_checkpoint,
 	e_sound_count,
 };
 
@@ -205,6 +197,9 @@ global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
 	{"assets/dash.wav", 48},
 	{"assets/knock.wav", 255},
 	{"assets/victory.wav", 128},
+	{"assets/click.wav", 128},
+	{"assets/key.wav", 128},
+	{"assets/checkpoint.wav", 128},
 };
 
 enum e_depth_mode
@@ -421,15 +416,6 @@ struct s_projectile
 	s_v3 pos;
 };
 
-struct s_fct
-{
-	float spawn_timestamp;
-	s_len_str text;
-	s_v3 pos;
-	s_v3 start_pos;
-	s_v3 target_pos;
-};
-
 struct s_time_data
 {
 	float passed;
@@ -465,6 +451,16 @@ struct s_particle
 	s_v4 color;
 };
 
+enum e_game_state0
+{
+	e_game_state0_main_menu,
+	e_game_state0_leaderboard,
+	e_game_state0_win_leaderboard,
+	e_game_state0_options,
+	e_game_state0_play,
+	e_game_state0_input_name,
+};
+
 struct s_time_format
 {
 	int hours;
@@ -473,12 +469,49 @@ struct s_time_format
 	int milliseconds;
 };
 
+struct s_key_event
+{
+	b8 went_down;
+	int modifiers;
+	int key;
+};
+
+struct s_state
+{
+	b8 temporary;
+	int value;
+};
+
+struct s_key_state
+{
+	b8 is_down;
+	int half_transition_count;
+};
+
+template <int n>
+struct s_input_str
+{
+	b8 visual_pos_initialized;
+	s_v2 cursor_visual_pos;
+	float last_edit_time;
+	float last_action_time;
+	s_maybe<int> cursor;
+	s_str_builder<n> str;
+};
+
+struct s_input_name_state
+{
+	s_input_str<256> name;
+	s_str_builder<64> error_str;
+};
+
+
 struct s_soft_game_data
 {
 	s_player player;
 	s_list<s_speed_boost, 1024> speed_boost_arr;
 	s_list<s_projectile, 1024> projectile_arr;
-	e_game_state state;
+	e_game_state1 state;
 	float want_dash_timestamp;
 	int hovered_boost;
 	float defeat_timestamp;
@@ -488,19 +521,18 @@ struct s_soft_game_data
 
 struct s_hard_game_data
 {
-	b8 display_checkpoint;
-	float highest_z; // nocheckin delete
 	s_soft_game_data soft_data;
-	s_list<s_fct, 16> fct_arr;
 	int update_count;
-	int curr_checkpoint;
+	s_maybe<int> curr_checkpoint;
 };
 
 struct s_game
 {
 	b8 reload_shaders;
+	b8 any_key_pressed;
 	s_linear_arena update_frame_arena;
 	s_linear_arena render_frame_arena;
+	s_circular_arena circular_arena;
 	u32 ubo;
 	s_texture texture_arr[e_texture_count];
 	s_mesh mesh_arr[e_mesh_count];
@@ -516,6 +548,27 @@ struct s_game
 	s_font font;
 	s_rng rng;
 	float speed;
+	s_input_name_state input_name_state;
+
+	int update_count_at_win_time;
+
+	b8 pop_state;
+	b8 clear_state;
+	s_maybe<s_state> next_state;
+	s_list<s_state, 16> state0;
+
+	s_list<s_leaderboard_entry, c_max_leaderboard_entries> leaderboard_arr;
+	b8 leaderboard_received;
+
+	s_str_builder<256> leaderboard_session_token;
+	s_str_builder<256> leaderboard_public_uid;
+	s_str_builder<256> leaderboard_nice_name;
+	s_str_builder<256> leaderboard_player_identifier;
+	int leaderboard_player_id;
+
+	s_key_state input_arr[c_max_keys];
+	s_list<s_key_event, 128> key_events;
+	s_list<char, 128> char_events;
 
 	b8 do_soft_reset;
 	b8 do_hard_reset;
@@ -528,27 +581,6 @@ struct s_game
 	s_instance_data* render_instance_arr[e_shader_count][e_texture_count][e_mesh_count];
 	s_list<s_render_group, 128> render_group_arr;
 };
-
-
-template <size_t T>
-func constexpr s_len_str S(const char (&str)[T])
-{
-	s_len_str result;
-	result.len = T - 1;
-	result.str = (char*)str;
-	return result;
-}
-
-func constexpr s_len_str S(char* str)
-{
-	s_len_str result;
-	result.str = str;
-	result.len = 0;
-	while(str[result.len] != '\0') {
-		result.len += 1;
-	}
-	return result;
-}
 
 
 #include "generated/generated_game.cpp"

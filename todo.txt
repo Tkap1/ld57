@@ -1,2 +1,6 @@
 finish winning
 finish checkpoint system
+limit delta
+
+polish:
+	some effect when checkpoint is hit
