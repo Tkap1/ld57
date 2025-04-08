@@ -435,6 +435,7 @@ func void update()
 				if(hard_data->curr_checkpoint.valid) {
 					int index = hard_data->curr_checkpoint.value;
 					player->pos.z = (index + 1) * (float)-c_checkpoint_step;
+					player->prev_pos = player->pos;
 				}
 
 				init_obstacles();

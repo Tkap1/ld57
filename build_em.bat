@@ -23,7 +23,7 @@ set comp=!comp! --preload-file ../shaders@shaders
 set comp=!comp! --preload-file ../assets@assets
 set comp=!comp! --preload-file ../src/shader_shared.h@src/shader_shared.h
 
-set debug=1
+set debug=0
 if !debug!==0 (
 	set comp=!comp! -O3
 	set comp=!comp! -sSAFE_HEAP=0
