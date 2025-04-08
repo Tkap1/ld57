@@ -1003,15 +1003,15 @@ func void render(float interp_dt, float delta)
 							s_instance_data data = zero;
 							data.model = m4_translate(teleporter.pos);
 							scale_m4_by_radius(&data.model, c_teleporter_radius);
-							data.color = make_color(1);
+							data.color = make_color(1.0f);
 							add_to_render_group(data, e_shader_teleporter, e_texture_white, e_mesh_quad);
 						}
 						{
 							s_instance_data data = zero;
 							data.model = m4_translate(teleporter.destination);
 							scale_m4_by_radius(&data.model, c_teleporter_radius);
-							data.color = make_color(1);
-							add_to_render_group(data, e_shader_portal, e_texture_white, e_mesh_quad);
+							data.color = make_color(1, 0.1f, 0.1f);
+							add_to_render_group(data, e_shader_teleporter, e_texture_white, e_mesh_quad);
 						}
 					}
 					// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw teleporters end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

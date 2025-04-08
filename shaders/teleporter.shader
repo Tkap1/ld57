@@ -56,7 +56,7 @@ void main()
 	uv.x *= 16.0 / 9.0;
 	vec3 color = vec3(0.0);
 	float d = length(uv);
-	float outter = smoothstep(0.2, 0.3, d);
+	float outter = smoothstep(-0.1, 0.3, d);
 
 	vec2 dir[4] = vec2[](
 		vec2(render_time),
@@ -71,9 +71,11 @@ void main()
 		n = max(n - pow(d, 0.5), 0.0);
 		float g = smoothstep(0.3, 0.5, d) * 5.0;
 		float b = smoothstep(0.4, 0.5, d) * 5.0;
-		color += vec3(1.0, g, 1.0 + b) * outter * n;
+		color += vec3(1.0, g, 2.0 + b) * outter * n;
 	}
 	float a = smoothstep(0.5, 0.45, d);
+	color.rgb *= v_color.rgb;
+	color.rgb += 0.05;
 	// color = v_color.rgb * v_color.rgb * n;
 	// color = vec3(n);
 	out_color = vec4(color, a * v_color.a);
