@@ -570,6 +570,11 @@ struct s_game
 	float speed;
 	s_input_name_state input_name_state;
 
+	b8 turn_off_death_sound;
+	b8 hide_timer;
+	b8 hide_depth;
+	b8 turn_off_all_sounds;
+
 	int update_count_at_win_time;
 
 	b8 pop_state;

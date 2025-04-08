@@ -619,7 +619,9 @@ func void update()
 						) {
 							soft_data->state = e_game_state1_defeat;
 							soft_data->defeat_timestamp = game->update_time;
-							play_sound(e_sound_defeat);
+							if(!game->turn_off_death_sound) {
+								play_sound(e_sound_defeat);
+							}
 							break;
 						}
 						else if(proj.type == e_projectile_type_bounce) {
@@ -858,6 +860,32 @@ func void render(float interp_dt, float delta)
 
 		// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		options start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 		case e_game_state0_options: {
+			s_v2 pos = wxy(0.5f, 0.4f);
+
+			{
+				s_len_str text = format_text("Death sound: %s", game->turn_off_death_sound ? "Off" : "On");
+				do_bool_button(text, pos, true, &game->turn_off_death_sound);
+				pos.y += 80;
+			}
+
+			{
+				s_len_str text = format_text("Sound: %s", game->turn_off_all_sounds ? "Off" : "On");
+				do_bool_button(text, pos, true, &game->turn_off_all_sounds);
+				pos.y += 80;
+			}
+
+			{
+				s_len_str text = format_text("Show timer: %s", game->hide_timer ? "Off" : "On");
+				do_bool_button(text, pos, true, &game->hide_timer);
+				pos.y += 80;
+			}
+
+			{
+				s_len_str text = format_text("Show depth: %s", game->hide_depth ? "Off" : "On");
+				do_bool_button(text, pos, true, &game->hide_depth);
+				pos.y += 80;
+			}
+
 			b8 escape = is_key_pressed(SDLK_ESCAPE, true);
 			if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
 				pop_game_state();
@@ -1071,17 +1099,20 @@ func void render(float interp_dt, float delta)
 					{
 						s_v2 pos = v2(4);
 						constexpr float font_size = 48;
-						{
+
+						if(!game->hide_timer) {
 							s_time_format format = update_count_to_time_format(hard_data->update_count);
 							s_len_str text = format_text("%02d:%02d.%i", format.minutes, format.seconds, format.milliseconds);
 							draw_text(text, pos, font_size, make_color(1), false, &game->font);
 							pos.y += font_size;
 						}
-						{
+
+						if(!game->hide_depth) {
 							s_len_str text = format_text("Depth: %i", floorfi(fabsf(player->pos.z)));
 							draw_text(text, pos, font_size, make_color(1), false, &game->font);
 							pos.y += font_size;
 						}
+
 						#if defined(m_debug)
 						{
 							s_len_str text = format_text("FPS: %i", roundfi(1.0f / delta));
@@ -1871,8 +1902,10 @@ func Mix_Chunk* load_sound_from_file(char* path, u8 volume)
 
 func void play_sound(e_sound sound_id)
 {
-	Mix_Chunk* chunk = game->sound_arr[sound_id];
-	Mix_PlayChannel(-1, chunk, 0);
+	if(!game->turn_off_all_sounds) {
+		Mix_Chunk* chunk = game->sound_arr[sound_id];
+		Mix_PlayChannel(-1, chunk, 0);
+	}
 }
 
 func void set_player_state(e_player_state state)
@@ -2606,6 +2639,17 @@ func b8 do_button(s_len_str text, s_v2 pos, b8 centered)
 
 	draw_text(text, pos, 32.0f, make_color(1), true, &game->font);
 
+	return result;
+}
+
+func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out)
+{
+	assert(out);
+	b8 result = false;
+	if(do_button(text, pos, centered)) {
+		result = true;
+		*out = !(*out);
+	}
 	return result;
 }
 

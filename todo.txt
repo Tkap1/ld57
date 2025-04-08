@@ -4,5 +4,3 @@ polish:
 	follow balls shrink?
 	smooth camera?
 	make teleporters look different than end portal
-	options
-	images (turn off ui)

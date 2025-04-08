@@ -70,6 +70,7 @@ func void pop_game_state();
 func s_v2 wxy(float x, float y);
 func s_v2 wcxy(float x, float y);
 func b8 do_button(s_len_str text, s_v2 pos, b8 centered);
+func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out);
 func b8 rect_vs_rect_topleft(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1);
 func b8 rect_vs_rect_center(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1);
 func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size);
