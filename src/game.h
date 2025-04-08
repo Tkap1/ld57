@@ -197,7 +197,7 @@ enum e_sound
 
 global constexpr s_sound_data c_sound_data_arr[e_sound_count] = {
 	{"assets/pop.wav", 128},
-	{"assets/defeat.wav", 128},
+	{"assets/defeat.wav", 32},
 	{"assets/clap.wav", 128},
 	{"assets/dash.wav", 48},
 	{"assets/knock.wav", 255},
