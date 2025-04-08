@@ -544,6 +544,7 @@ struct s_hard_game_data
 	s_soft_game_data soft_data;
 	int update_count;
 	s_maybe<int> curr_checkpoint;
+	float checkpoint_hit_timestamp_arr[32];
 };
 
 struct s_game
@@ -574,6 +575,8 @@ struct s_game
 	b8 hide_timer;
 	b8 hide_depth;
 	b8 turn_off_all_sounds;
+
+	s_v3 cam_pos;
 
 	int update_count_at_win_time;
 

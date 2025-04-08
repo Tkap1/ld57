@@ -583,6 +583,7 @@ func void update()
 						if(d <= 5) {
 							hard_data->curr_checkpoint = maybe(index);
 							play_sound(e_sound_checkpoint);
+							hard_data->checkpoint_hit_timestamp_arr[index] = game->update_time;
 
 							{
 								s_particle_spawn_data data = zero;
@@ -754,9 +755,12 @@ func void render(float interp_dt, float delta)
 
 	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
 
-	s_v3 cam_pos = v3(
+	s_v3 wanted_cam_pos = v3(
 		0, -25, player_pos.z - 5
 	);
+	game->cam_pos = lerp_v3(game->cam_pos, wanted_cam_pos, delta * 10);
+	s_v3 cam_pos = game->cam_pos;
+
 	s_v3 cam_forward = v3_normalized(v3(0, 1, -0.1f));
 	s_m4 view = look_at(cam_pos, cam_pos + cam_forward, c_up_axis);
 
@@ -964,15 +968,27 @@ func void render(float interp_dt, float delta)
 
 						// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		draw checkpoints start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 						{
+							int index = 0;
 							float z = c_checkpoint_step;
 							while(z < c_bottom) {
 								s_instance_data data = zero;
 								data.model = m4_translate(v3(0.0f, 0.0f, -z));
 								data.model = m4_multiply(data.model, m4_rotate(game->render_time, v3(0, 0, 1)));
-								data.model = m4_multiply(data.model, m4_scale(v3(2)));
-								data.color = make_color(1);
+								s_time_data time_data = zero;
+								if(hard_data->checkpoint_hit_timestamp_arr[index] > 0) {
+									time_data = get_time_data(
+										update_time_to_render_time(game->update_time, interp_dt), hard_data->checkpoint_hit_timestamp_arr[index], 1.0f
+									);
+								}
+								else {
+									time_data.percent = 1;
+								}
+								float scale = ease_out_back_advanced(time_data.percent, 0, 2.0f, 3.0f, 2.0f);
+								data.model = m4_multiply(data.model, m4_scale(v3(scale)));
+								data.color = make_color(ease_out_back_advanced(time_data.percent, 0, 2.0f, 2.0f, 0.75f));
 								add_to_render_group(data, e_shader_mesh, e_texture_checkpoint, e_mesh_cube);
 								z += c_checkpoint_step;
+								index += 1;
 							}
 						}
 						// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		draw checkpoints end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

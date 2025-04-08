@@ -1,6 +1,4 @@
 
 polish:
-	some effect when checkpoint is hit
 	follow balls shrink?
-	smooth camera?
 	particles when entering portal
