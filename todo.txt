@@ -2,3 +2,4 @@
 polish:
 	follow balls shrink?
 	particles when entering portal
+	I think we are not clearing the leaderboard state when entering the leaderboard gmae state, so we kinda have some garbage frames

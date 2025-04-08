@@ -1136,6 +1136,31 @@ func void render(float interp_dt, float delta)
 							pos.y += font_size;
 						}
 						#endif // m_debug
+
+						pos.y += font_size * 0.5f;
+						{
+							s_len_str text = format_text("Hold $$C0832Eleft click$. to go faster");
+							draw_text(text, pos, font_size * 0.5f, make_color(1), false, &game->font);
+							pos.y += font_size;
+						}
+
+						{
+							s_len_str text = format_text("Press $$C0832Eright click$. or $$C0832EF$.\nto dash into or out of green balls");
+							draw_text(text, pos, font_size * 0.5f, make_color(1), false, &game->font);
+							pos.y += font_size * 1.5f;
+						}
+
+						{
+							s_len_str text = format_text("Press $$C0832ER$. to go back to\nprevious checkpoint");
+							draw_text(text, pos, font_size * 0.5f, make_color(1), false, &game->font);
+							pos.y += font_size * 1.5f;
+						}
+
+						{
+							s_len_str text = format_text("Press $$C0832ECTRL + R$. to fully restart");
+							draw_text(text, pos, font_size * 0.5f, make_color(1), false, &game->font);
+							pos.y += font_size;
+						}
 					}
 
 					{
