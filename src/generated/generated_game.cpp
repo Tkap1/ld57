@@ -97,3 +97,4 @@ func void do_leaderboard();
 func void init_obstacles();
 func b8 sphere_out_of_bounds_left(s_v3 pos, float radius);
 func b8 sphere_out_of_bounds_right(s_v3 pos, float radius);
+func s_v3 get_wanted_cam_pos(s_v3 player_pos);

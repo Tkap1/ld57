@@ -427,6 +427,7 @@ func void update()
 				game->do_soft_reset = false;
 				memset(soft_data, 0, sizeof(s_soft_game_data));
 
+
 				// @Note(tkap, 07/04/2025): If restarting without a checkpoint, reset the timer so that the player doesn't have to
 				if(!hard_data->curr_checkpoint.valid) {
 					hard_data->update_count = 0;
@@ -437,6 +438,7 @@ func void update()
 					player->pos.z = (index + 1) * (float)-c_checkpoint_step;
 					player->prev_pos = player->pos;
 				}
+				game->cam_pos = get_wanted_cam_pos(player->pos);
 
 				init_obstacles();
 			}
@@ -755,9 +757,7 @@ func void render(float interp_dt, float delta)
 
 	s_v3 player_pos = lerp_v3(player->prev_pos, player->pos, interp_dt);
 
-	s_v3 wanted_cam_pos = v3(
-		0, -25, player_pos.z - 5
-	);
+	s_v3 wanted_cam_pos = get_wanted_cam_pos(player_pos);
 	game->cam_pos = lerp_v3(game->cam_pos, wanted_cam_pos, delta * 10);
 	s_v3 cam_pos = game->cam_pos;
 
@@ -3180,5 +3180,13 @@ func b8 sphere_out_of_bounds_left(s_v3 pos, float radius)
 func b8 sphere_out_of_bounds_right(s_v3 pos, float radius)
 {
 	b8 result = pos.x > c_wall_x - radius * 2;
+	return result;
+}
+
+func s_v3 get_wanted_cam_pos(s_v3 player_pos)
+{
+	s_v3 result = v3(
+		0, -25, player_pos.z - 5
+	);
 	return result;
 }
