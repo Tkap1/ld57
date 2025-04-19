@@ -22,8 +22,6 @@ typedef void (*t_game_func)(s_platform_data*);
 t_game_func do_game = null;
 #endif
 
-#include "shared.cpp"
-
 int main()
 {
 

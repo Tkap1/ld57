@@ -24,7 +24,6 @@
 #endif // _WIN32
 
 #include <stdlib.h>
-#include <stdio.h>
 
 #include <gl/GL.h>
 #if !defined(__EMSCRIPTEN__)
@@ -58,7 +57,19 @@
 #endif // __EMSCRIPTEN__
 
 
-#include "tk_types.h"
+#if defined(m_debug)
+#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); }}
+#else // m_debug
+#define gl(...) __VA_ARGS__
+#endif // m_debug
+
+#include "tklib.h"
+#include "shared.h"
+
+#include "config.h"
+#include "leaderboard.h"
+#include "game.h"
+#include "shader_shared.h"
 
 
 #if defined(__EMSCRIPTEN__)
@@ -67,33 +78,12 @@ global constexpr b8 c_on_web = true;
 global constexpr b8 c_on_web = false;
 #endif
 
-#if defined(m_debug)
-#define gl(...) __VA_ARGS__; {int error = glGetError(); if(error != 0) { on_gl_error(#__VA_ARGS__, __FILE__, __LINE__, error); }}
-#else // m_debug
-#define gl(...) __VA_ARGS__
-#endif // m_debug
-
-#include "shared.h"
-#include "tk_arena.h"
-#include "tk_array.h"
-
-#define m_tk_random_impl
-#include "tk_random.h"
-
-#include "tk_math.h"
-#include "config.h"
-#include "leaderboard.h"
-#include "game.h"
-#include "tk_color.h"
-#include "shader_shared.h"
 
 
 global s_platform_data* g_platform_data;
 global s_game* game;
 global s_v2 g_mouse;
 global b8 g_click;
-
-#include "shared.cpp"
 
 #if defined(__EMSCRIPTEN__)
 #include "leaderboard.cpp"
@@ -495,7 +485,7 @@ func void update()
 					s_speed_boost boost = soft_data->speed_boost_arr[player->dash_target.value];
 					s_v3 dir = v3_normalized(boost.pos - player->pos);
 					player->vel = dir;
-					player->pos = go_towards(player->pos, boost.pos, 1.0f);
+					player->pos = go_towards_v3(player->pos, boost.pos, 1.0f);
 					if(v3_distance(player->pos, boost.pos) < 0.01f) {
 						soft_data->speed_boost_arr.remove_and_swap(soft_data->player.dash_target.value);
 						set_player_state(e_player_state_post_dash);
@@ -1260,7 +1250,7 @@ func void render(float interp_dt, float delta)
 				blink = true;
 			}
 			float t2 = clamp(game->render_time - state->name.last_edit_time, 0.0f, 1.0f);
-			s_v4 color = lerp_color(hex_to_rgb(0xffdddd), brighter(hex_to_rgb(0xABC28F), 0.8f), 1 - powf(1 - t2, 3));
+			s_v4 color = lerp_color(hex_to_rgb(0xffdddd), multiply_rgb_clamped(hex_to_rgb(0xABC28F), 0.8f), 1 - powf(1 - t2, 3));
 			float extra_height = ease_out_elastic2_advanced(t2, 0, 0.75f, 20, 0);
 			cursor_size.y += extra_height;
 
@@ -1581,49 +1571,9 @@ func s_shader load_shader_from_file(char* file, s_linear_arena* arena)
 	return result;
 }
 
-func u8* read_file(char* path, s_linear_arena* arena)
-{
-	FILE* file = fopen(path, "rb");
-	b8 read_file = false;
-	u8* result = null;
-	if(file) {
-		read_file = true;
-	}
-	if(read_file) {
-		fseek(file, 0, SEEK_END);
-		int size = ftell(file);
-		fseek(file, 0, SEEK_SET);
-		result = arena_alloc(arena, size + 1);
-		fread(result, 1, size, file);
-		fclose(file);
-		result[size] = '\0';
-	}
-	return result;
-}
-
 func void set_window_size(int width, int height)
 {
 	SDL_SetWindowSize(g_platform_data->window, width, height);
-}
-
-func s_rect do_letterbox(s_v2 curr_size, s_v2 base_size)
-{
-	s_rect rect_result = zero;
-	rect_result.size = curr_size;
-	float curr_ar = curr_size.x / curr_size.y;
-	float base_ar = base_size.x / base_size.y;
-
-	// @Note(tkap, 30/12/2024): We are too wide
-	if(curr_ar > base_ar) {
-		rect_result.w = base_ar / curr_ar * curr_size.x;
-		rect_result.x = (curr_size.x - rect_result.w) * 0.5f;
-	}
-	// @Note(tkap, 30/12/2024): We are too tall
-	else if(base_ar > curr_ar) {
-		rect_result.h = curr_ar / base_ar * curr_size.y;
-		rect_result.y = (curr_size.y - rect_result.h) * 0.5f;
-	}
-	return rect_result;
 }
 
 func s_render_flush_data make_render_flush_data(s_v3 cam_pos, s_v3 player_pos)
@@ -1914,18 +1864,6 @@ func void set_blend_mode(e_blend_mode mode)
 	}
 }
 
-template <typename t>
-func void toggle(t* out, t a, t b)
-{
-	if(*out == a) {
-		*out = b;
-	}
-	else if(*out == b) {
-		*out = a;
-	}
-	invalid_else;
-}
-
 func b8 is_boost_hovered(s_v3 mouse_point, s_v3 boost_pos)
 {
 	float dist = v3_distance(mouse_point, boost_pos);
@@ -2019,22 +1957,6 @@ func s_texture load_texture_from_data(void* data, int width, int height, int for
 	return result;
 }
 
-template <typename t>
-func s_maybe<t> maybe()
-{
-	s_maybe<t> result = zero;
-	return result;
-}
-
-template <typename t>
-func s_maybe<t> maybe(t value)
-{
-	s_maybe<t> result = zero;
-	result.valid = true;
-	result.value = value;
-	return result;
-}
-
 // @TODO(tkap, 13/10/2024): premultiply??
 func s_font load_font_from_file(char* file, int font_size, s_linear_arena* arena)
 {
@@ -2120,7 +2042,7 @@ func s_v2 draw_text(s_len_str text, s_v2 in_pos, float font_size, s_v4 color, b8
 {
 	float scale = font->scale * (font_size / font->size);
 
-	assert(text.len > 0);
+	assert(text.count > 0);
 	if(centered) {
 		s_v2 text_size = get_text_size(text, font, font_size);
 		in_pos.x -= text_size.x / 2;
@@ -2131,7 +2053,7 @@ func s_v2 draw_text(s_len_str text, s_v2 in_pos, float font_size, s_v4 color, b8
 
 	s_text_iterator it = {};
 	while(iterate_text(&it, text, color)) {
-		for(int char_i = 0; char_i < it.text.len; char_i++) {
+		for(int char_i = 0; char_i < it.text.count; char_i++) {
 			int c = it.text[char_i];
 			if(c <= 0 || c >= 128) { continue; }
 
@@ -2194,7 +2116,7 @@ func s_v2 get_text_size_with_count(s_len_str in_text, s_font* font, float font_s
 	s_len_str text = substr_from_to_exclusive(in_text, 0, count);
 	s_text_iterator it = {};
 	while(iterate_text(&it, text, make_color(0))) {
-		for(int char_i = 0; char_i < it.text.len; char_i++) {
+		for(int char_i = 0; char_i < it.text.count; char_i++) {
 			char c = it.text[char_i];
 			s_glyph glyph = font->glyph_arr[c];
 			if(c == '\t') {
@@ -2221,12 +2143,12 @@ func s_v2 get_text_size_with_count(s_len_str in_text, s_font* font, float font_s
 
 func s_v2 get_text_size(s_len_str text, s_font* font, float font_size)
 {
-	return get_text_size_with_count(text, font, font_size, text.len, 0);
+	return get_text_size_with_count(text, font, font_size, text.count, 0);
 }
 
 func b8 iterate_text(s_text_iterator* it, s_len_str text, s_v4 color)
 {
-	if(it->index >= text.len) { return false; }
+	if(it->index >= text.count) { return false; }
 
 	if(it->color_stack.count <= 0) {
 		it->color_stack.add(color);
@@ -2236,9 +2158,9 @@ func b8 iterate_text(s_text_iterator* it, s_len_str text, s_v4 color)
 
 	int index = it->index;
 	int advance = 0;
-	while(index < text.len) {
+	while(index < text.count) {
 		char c = text[index];
-		char next_c = index < text.len - 1 ? text[index + 1] : 0;
+		char next_c = index < text.count - 1 ? text[index + 1] : 0;
 		if(c == '$' && next_c == '$') {
 			s_len_str red_str = substr_from_to_exclusive(text, index + 2, index + 4);
 			s_len_str green_str = substr_from_to_exclusive(text, index + 4, index + 6);
@@ -2281,25 +2203,11 @@ func b8 iterate_text(s_text_iterator* it, s_len_str text, s_v4 color)
 	return true;
 }
 
-[[nodiscard]] func s_len_str substr_from_to_exclusive(s_len_str x, int start, int end)
-{
-	assert(start >= 0);
-	assert(end > start);
-	return {.str = x.str + start, .len = end - start};
-}
-
-func int get_spaces_for_column(int column)
-{
-	constexpr int tab_size = 4;
-	if(tab_size <= 0) { return 0; }
-	return tab_size - (column % tab_size);
-}
-
 func int hex_str_to_int(s_len_str str)
 {
 	int result = 0;
 	int tens = 0;
-	for(int i = str.len - 1; i >= 0; i -= 1) {
+	for(int i = str.count - 1; i >= 0; i -= 1) {
 		char c = str[i];
 		int val = 0;
 		if(is_number(c)) {
@@ -2317,30 +2225,6 @@ func int hex_str_to_int(s_len_str str)
 	return result;
 }
 
-func b8 is_number(char c)
-{
-	return c >= '0' && c <= '9';
-}
-
-func b8 is_alpha(char c)
-{
-	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
-}
-
-func b8 is_alpha_numeric(char c)
-{
-	return is_number(c) || is_alpha(c);
-}
-
-func b8 can_start_identifier(char c)
-{
-	return is_alpha(c) || c == '_';
-}
-
-func b8 can_continue_identifier(char c)
-{
-	return is_alpha(c) || is_number(c) || c == '_';
-}
 
 func s_len_str format_text(const char* text, ...)
 {
@@ -2426,42 +2310,6 @@ func void update_particles()
 	}
 }
 
-func s_v4 rand_color(s_rng* rng)
-{
-	s_v4 result;
-	result.x = randf32(rng);
-	result.y = randf32(rng);
-	result.z = randf32(rng);
-	result.a = 1;
-	return result;
-}
-
-func s_v4 rand_color_normalized(s_rng* rng)
-{
-	s_v4 result;
-	result.x = randf32(rng);
-	result.y = randf32(rng);
-	result.z = randf32(rng);
-	result.xyz = v3_normalized(result.xyz);
-	result.a = 1;
-	return result;
-}
-
-func s_v3 random_point_in_sphere(s_rng* rng, float radius)
-{
-	s_v3 pos;
-	while(true) {
-		pos = v3(
-			randf_range(rng, -radius, radius),
-			randf_range(rng, -radius, radius),
-			randf_range(rng, -radius, radius)
-		);
-		float d = v3_length(pos);
-		if(d <= radius) { break; }
-	}
-	return pos;
-}
-
 func u8* try_really_hard_to_read_file(char* file, s_linear_arena* arena)
 {
 	u8* result = null;
@@ -2485,15 +2333,6 @@ func s_m4 fullscreen_m4()
 {
 	s_m4 result = m4_translate(v3(c_world_center, 0.0f));
 	result = m4_multiply(result, m4_scale(v3(c_world_size, 0.0f)));
-	return result;
-}
-
-func s_time_data get_time_data(float curr, float timestamp, float duration)
-{
-	s_time_data result = zero;
-	result.passed = curr - timestamp;
-	result.percent = result.passed / duration;
-	result.inv_percent = 1.0f - result.percent;
 	return result;
 }
 
@@ -2694,20 +2533,6 @@ func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out)
 	return result;
 }
 
-
-func b8 rect_vs_rect_topleft(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1)
-{
-	b8 result = pos0.x + size0.x > pos1.x && pos0.x < pos1.x + size1.x &&
-		pos0.y + size0.y > pos1.y && pos0.y < pos1.y + size1.y;
-	return result;
-}
-
-func b8 rect_vs_rect_center(s_v2 pos0, s_v2 size0, s_v2 pos1, s_v2 size1)
-{
-	b8 result = rect_vs_rect_topleft(pos0 - size0 * 0.5f, size0, pos1 - size1 * 0.5f, size1);
-	return result;
-}
-
 func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size)
 {
 	b8 result = rect_vs_rect_topleft(g_mouse, v2(1), pos, size);
@@ -2740,7 +2565,7 @@ func void cstr_into_builder(s_str_builder<n>* builder, char* str)
 
 	int len = (int)strlen(str);
 	assert(len <= n);
-	memcpy(builder->data, str, len);
+	memcpy(builder->str, str, len);
 	builder->count = len;
 }
 
@@ -2748,24 +2573,8 @@ template <int n>
 func s_len_str builder_to_len_str(s_str_builder<n>* builder)
 {
 	s_len_str result = zero;
-	result.str = builder->data;
-	result.len = builder->count;
-	return result;
-}
-
-template <int n>
-func char* builder_to_cstr(s_str_builder<n>* builder, s_circular_arena* arena)
-{
-	char* result = (char*)circular_arena_alloc(arena, builder->count + 1);
-	memcpy(result, builder->data, builder->count);
-	result[builder->count] = '\0';
-	return result;
-}
-
-template <int n0, int n1>
-func b8 builder_equals(s_str_builder<n0>* a, s_str_builder<n1>* b)
-{
-	b8 result = a->count == b->count && memcmp(a->data, b->data, a->count) == 0;
+	result.str = builder->str;
+	result.count = builder->count;
 	return result;
 }
 
@@ -2796,7 +2605,7 @@ func b8 handle_string_input(s_input_str<n>* str, float time)
 		else if(event.key == SDLK_ESCAPE) {
 			str->cursor.value = 0;
 			str->str.count = 0;
-			str->str.data[0] = 0;
+			str->str.str[0] = 0;
 			str->last_edit_time = time;
 			str->last_action_time = str->last_edit_time;
 		}
@@ -2833,34 +2642,16 @@ func void handle_key_event(int key, b8 is_down, b8 is_repeat)
 }
 
 template <int n>
-func b8 is_builder_full(s_str_builder<n>* builder)
-{
-	b8 result = builder->count >= n;
-	return result;
-}
-
-template <int n>
 func void builder_insert(s_str_builder<n>* builder, int index, char c)
 {
 	assert(index >= 0);
 	assert(index <= builder->count);
 	int num_to_the_right = builder->count - index;
 	if(num_to_the_right > 0) {
-		memmove(&builder->data[index + 1], &builder->data[index], num_to_the_right);
+		memmove(&builder->str[index + 1], &builder->str[index], num_to_the_right);
 	}
-	builder->data[index] = c;
+	builder->str[index] = c;
 	builder->count += 1;
-}
-
-template <int n>
-func void builder_remove_char_at(s_str_builder<n>* builder, int index)
-{
-	assert(index >= 0);
-	assert(index < builder->count);
-
-	builder->count -= 1;
-	memmove(&builder->data[index], &builder->data[index + 1], builder->count - index);
-	builder->data[builder->count] = 0;
 }
 
 func void do_leaderboard()
@@ -2890,9 +2681,9 @@ func void do_leaderboard()
 				color = hex_to_rgb(0xD3A861);
 				rank_number = entry.rank;
 			}
-			char* name = entry.internal_name.data;
+			char* name = entry.internal_name.str;
 			if(entry.nice_name.count > 0) {
-				name = entry.nice_name.data;
+				name = entry.nice_name.str;
 			}
 			draw_text(format_text("%i %s", rank_number, name), v2(c_world_size.x * 0.1f, pos.y - 24), 32, color, false, &game->font);
 			s_len_str text = format_text("%02i:%02i.%i", data.minutes, data.seconds, data.milliseconds);

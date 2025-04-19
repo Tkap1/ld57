@@ -1,6 +1,4 @@
 
-#include <stdio.h>
-
 global constexpr int c_max_hot_files = 64;
 
 struct s_platform_data

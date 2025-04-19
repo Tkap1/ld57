@@ -8,7 +8,7 @@ struct s_string_parse
 	char* last_char;
 	char* continuation;
 	char* result;
-	int len;
+	int count;
 };
 
 enum e_json

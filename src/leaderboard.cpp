@@ -32,7 +32,7 @@ func void on_leaderboard_id_load_success(void* arg, void* in_data, int data_len)
 
 	s_len_str body = format_text("{\"game_key\": \"dev_ae7c0ca6ad2047e1890f76fe7836a5e3\", \"player_identifier\": \"%s\", \"game_version\": \"0.0.0.1\", \"development_mode\": true}", (char*)data);
 	attr.requestData = body.str;
-	attr.requestDataSize = body.len;
+	attr.requestDataSize = body.count;
 	emscripten_fetch(&attr, "https://api.lootlocker.io/game/v2/session/guest");
 }
 
@@ -71,7 +71,7 @@ func void register_leaderboard_client_success(emscripten_fetch_t *fetch)
 		}
 		game->leaderboard_player_id = json_get(json, "player_id", e_json_integer)->integer;
 	}
-	emscripten_idb_async_store("leaderboard", "id", (void*)game->leaderboard_player_identifier.data, game->leaderboard_player_identifier.count, null, on_store_success, on_store_error);
+	emscripten_idb_async_store("leaderboard", "id", (void*)game->leaderboard_player_identifier.str, game->leaderboard_player_identifier.count, null, on_store_success, on_store_error);
 	// We're done with the fetch, so free it
 	emscripten_fetch_close(fetch);
 }
@@ -257,12 +257,12 @@ func s_string_parse parse_string(char* str, b8 do_alloc)
 		else if(*str == '"' && str[-1] != '\\') {
 			result.success = true;
 			result.last_char = str - 1;
-			result.len = (int)(result.last_char - result.first_char) + 1;
+			result.count = (int)(result.last_char - result.first_char) + 1;
 			result.continuation = str + 1;
 			if(do_alloc && result.last_char >= result.first_char) {
-				result.result = (char*)malloc(result.len + 1);
-				memcpy(result.result, result.first_char, result.len);
-				result.result[result.len] = 0;
+				result.result = (char*)malloc(result.count + 1);
+				memcpy(result.result, result.first_char, result.count);
+				result.result[result.count] = 0;
 			}
 			break;
 		}
@@ -383,7 +383,7 @@ func void when_our_leaderboard_obtained(s_json* json)
 
 	b8 is_already_in_top_ten = false;
 	foreach_val(entry_i, entry, game->leaderboard_arr) {
-		if(strcmp(internal_name, entry.internal_name.data) == 0) {
+		if(strcmp(internal_name, entry.internal_name.str) == 0) {
 			is_already_in_top_ten = true;
 			break;
 		}
@@ -448,7 +448,7 @@ func void submit_leaderboard_score(int time, int leaderboard_id)
 	char* headers[] = {"x-session-token", builder_to_cstr(&game->leaderboard_session_token, &game->circular_arena), NULL};
 	attr.requestHeaders = headers;
 	attr.requestData = data.str;
-	attr.requestDataSize = data.len;
+	attr.requestDataSize = data.count;
 	s_len_str url = format_text("https://api.lootlocker.io/game/leaderboards/%i/submit", leaderboard_id);
 	emscripten_fetch(&attr, url.str);
 }
@@ -470,9 +470,9 @@ func void set_leaderboard_name_fail(emscripten_fetch_t *fetch)
 
 func char* to_cstr(s_len_str str, s_linear_arena* arena)
 {
-	char* result = (char*)arena_alloc(arena, str.len + 1);
-	memcpy(result, str.str, str.len);
-	result[str.len] = 0;
+	char* result = (char*)arena_alloc(arena, str.count + 1);
+	memcpy(result, str.str, str.count);
+	result[str.count] = 0;
 	return result;
 }
 
@@ -493,7 +493,7 @@ func void set_leaderboard_name(s_len_str name)
 	char* headers[] = {"x-session-token", builder_to_cstr(&game->leaderboard_session_token, &game->circular_arena), NULL};
 	attr.requestHeaders = headers;
 	attr.requestData = data.str;
-	attr.requestDataSize = data.len;
+	attr.requestDataSize = data.count;
 	s_len_str url = S("https://api.lootlocker.io/game/player/name");
 	emscripten_fetch(&attr, url.str);
 }

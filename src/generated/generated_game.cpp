@@ -52,14 +52,20 @@ func s_v2 wxy(float x, float y);
 func s_v2 wcxy(float x, float y);
 func b8 do_button(s_len_str text, s_v2 pos, b8 centered);
 func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out);
+func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size);
+func b8 mouse_vs_rect_center(s_v2 pos, s_v2 size);
 func b8 is_key_pressed(int key, b8 consume);
-func b8 is_key_down(int key, b8 consume);
+template <int n>
+func void cstr_into_builder(s_str_builder<n>* builder, char* str);
+template <int n>
+func s_len_str builder_to_len_str(s_str_builder<n>* builder);
 template <int n>
 func b8 handle_string_input(s_input_str<n>* str, float time);
 func void handle_key_event(int key, b8 is_down, b8 is_repeat);
+template <int n>
+func void builder_insert(s_str_builder<n>* builder, int index, char c);
 func void do_leaderboard();
 func void init_obstacles();
 func b8 sphere_out_of_bounds_left(s_v3 pos, float radius);
 func b8 sphere_out_of_bounds_right(s_v3 pos, float radius);
 func s_v3 get_wanted_cam_pos(s_v3 player_pos);
-func void block(int x, int y, int z);

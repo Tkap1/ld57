@@ -13,8 +13,6 @@
 #include "shared.h"
 global s_platform_data g_platform_data;
 
-#include "shared.cpp"
-
 func void do_one_frame();
 
 int main()
