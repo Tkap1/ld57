@@ -599,8 +599,9 @@ struct s_game
 func int get_spaces_for_column(int column)
 {
 	constexpr int tab_size = 4;
-	if(tab_size <= 0) { return 0; }
-	return tab_size - (column % tab_size);
+	static_assert(tab_size > 0);
+	int result = tab_size - (column % tab_size);
+	return result;
 }
 
 

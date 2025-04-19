@@ -687,6 +687,8 @@ func void update()
 			hard_data->update_count += 1;
 
 		} break;
+
+		default: {}
 	}
 
 	game->update_time += (float)c_update_delay;
