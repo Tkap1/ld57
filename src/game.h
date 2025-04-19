@@ -389,13 +389,6 @@ enum e_player_state
 	e_player_state_post_dash,
 };
 
-template <typename t>
-struct s_maybe
-{
-	b8 valid;
-	t value;
-};
-
 struct s_player
 {
 	e_player_state state;
@@ -433,13 +426,6 @@ struct s_projectile
 	s_v3 pos;
 	s_v3 dir;
 	s_v4 color;
-};
-
-struct s_time_data
-{
-	float passed;
-	float percent;
-	float inv_percent;
 };
 
 struct s_particle_spawn_data
@@ -535,7 +521,7 @@ struct s_soft_game_data
 	float want_dash_timestamp;
 	int hovered_boost;
 	float defeat_timestamp;
-	s_list<s_particle, 4096> particle_arr;
+	s_list<s_particle, 16384> particle_arr;
 	float pre_victory_timestamp;
 };
 
@@ -609,6 +595,13 @@ struct s_game
 	s_instance_data* render_instance_arr[e_shader_count][e_texture_count][e_mesh_count];
 	s_list<s_render_group, 128> render_group_arr;
 };
+
+func int get_spaces_for_column(int column)
+{
+	constexpr int tab_size = 4;
+	if(tab_size <= 0) { return 0; }
+	return tab_size - (column % tab_size);
+}
 
 
 #include "generated/generated_game.cpp"

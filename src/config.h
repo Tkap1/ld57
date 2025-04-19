@@ -1,49 +1,10 @@
 
-struct s_len_str
-{
-	char* str;
-	int len;
-
-	char operator[](int index)
-	{
-		assert(index < len);
-		return str[index];
-	}
-};
-
-template <size_t T>
-func constexpr s_len_str S(const char (&str)[T])
-{
-	s_len_str result;
-	result.len = T - 1;
-	result.str = (char*)str;
-	return result;
-}
-
-func constexpr s_len_str S(char* str)
-{
-	s_len_str result;
-	result.str = str;
-	result.len = 0;
-	while(str[result.len] != '\0') {
-		result.len += 1;
-	}
-	return result;
-}
-
-template <int n>
-struct s_str_builder
-{
-	int count;
-	char data[n];
-};
-
 
 global constexpr s_v2 c_world_size = {1366, 768};
 global constexpr s_v2 c_world_center = {c_world_size.x * 0.5f, c_world_size.y * 0.5f};
 global constexpr int c_max_vertices = 4096;
 global constexpr int c_max_faces = 1024;
-global constexpr s_v3 c_up_axis = v3(0, 0, 1);
+global constexpr s_v3 c_up_axis = {0, 0, 1};
 global constexpr int c_shadow_map_res = 1024;
 global constexpr int c_updates_per_second = 100;
 global constexpr f64 c_update_delay = 1.0 / c_updates_per_second;

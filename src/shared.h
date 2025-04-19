@@ -3,19 +3,6 @@
 
 global constexpr int c_max_hot_files = 64;
 
-
-#if defined(m_debug)
-#define assert(condition) if(!(condition)) { on_failed_assert(#condition, __FILE__, __LINE__); }
-#else // m_debug
-#define assert(condition)
-#endif // m_debug
-
-struct s_v2i
-{
-	int x;
-	int y;
-};
-
 struct s_platform_data
 {
 	b8 quit;
@@ -40,19 +27,5 @@ void init(s_platform_data* platform_data);
 void init_after_recompile(s_platform_data* platform_data);
 void do_game(s_platform_data* platform_data);
 #endif
-
-func void on_failed_assert(char* condition, char* file, int line)
-{
-	printf("Failed assert at %s(%i)\n", file, line);
-	printf("\t%s\n", condition);
-	printf("-----------------------------\n");
-
-	#if defined(_WIN32)
-	__debugbreak();
-	#else
-	__builtin_trap();
-	#endif
-}
-
 
 #include "generated/generated_shared.cpp"

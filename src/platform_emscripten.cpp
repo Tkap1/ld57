@@ -9,7 +9,7 @@
 #include <emscripten/html5.h>
 #include <emscripten/fetch.h>
 
-#include "tk_types.h"
+#include "tklib.h"
 #include "shared.h"
 global s_platform_data g_platform_data;
 

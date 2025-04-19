@@ -1,96 +1,4 @@
 
-global constexpr float c_pi = 3.1415926f;
-
-struct s_v2
-{
-	float x;
-	float y;
-};
-
-struct s_v3
-{
-	union {
-		struct {
-			float x;
-			float y;
-		};
-		s_v2 xy;
-	};
-	float z;
-};
-
-
-union s_v4
-{
-	struct
-	{
-		union
-		{
-			struct
-			{
-				union
-				{
-					struct
-					{
-						float x;
-						float y;
-					};
-					s_v2 xy;
-				};
-				float z;
-			};
-			s_v3 xyz;
-		};
-		float w;
-	};
-
-	struct
-	{
-		union
-		{
-			struct
-			{
-				union
-				{
-					struct
-					{
-						float r;
-						float g;
-					};
-					s_v2 rg;
-				};
-				float b;
-			};
-			s_v3 rgb;
-		};
-		float a;
-	};
-	float elements[4];
-};
-
-struct s_rect
-{
-	union
-	{
-		struct
-		{
-			float x;
-			float y;
-		};
-		s_v2 pos;
-	};
-
-	union
-	{
-		struct
-		{
-			float w;
-			float h;
-		};
-		s_v2 size;
-	};
-};
-
 struct s_quaternion
 {
 	union
@@ -104,13 +12,6 @@ struct s_quaternion
 		s_v3 xyz;
 	};
 	float w;
-};
-
-
-union s_m4
-{
-	float all[16];
-	float all2[4][4];
 };
 
 struct s_ray
@@ -150,63 +51,6 @@ func constexpr t clamp(t current, t min_val, t max_val)
 	return at_most(max_val, at_least(min_val, current));
 }
 
-
-template <typename t0, typename t1>
-func constexpr s_v2 v2(t0 x, t1 y)
-{
-	s_v2 result = zero;
-	result.x = (float)x;
-	result.y = (float)y;
-	return result;
-}
-
-template <typename t0>
-func constexpr s_v2 v2(t0 x)
-{
-	s_v2 result = zero;
-	result.x = (float)x;
-	result.y = (float)x;
-	return result;
-}
-
-func constexpr s_v2 v2(s_v2i v)
-{
-	s_v2 result = zero;
-	result.x = (float)v.x;
-	result.y = (float)v.y;
-	return result;
-}
-
-template <typename t0, typename t1, typename t2>
-func constexpr s_v3 v3(t0 x, t1 y, t2 z)
-{
-	s_v3 result = zero;
-	result.x = (float)x;
-	result.y = (float)y;
-	result.z = (float)z;
-	return result;
-}
-
-template <typename t0>
-func constexpr s_v3 v3(s_v2 xy, t0 z)
-{
-	s_v3 result = zero;
-	result.x = xy.x;
-	result.y = xy.y;
-	result.z = (float)z;
-	return result;
-}
-
-template <typename t0>
-func constexpr s_v3 v3(t0 x)
-{
-	s_v3 result = zero;
-	result.x = (float)x;
-	result.y = (float)x;
-	result.z = (float)x;
-	return result;
-}
-
 template <typename t0, typename t1, typename t2, typename t3>
 func constexpr s_v4 v4(t0 x, t1 y, t2 z, t3 w)
 {
@@ -227,73 +71,6 @@ func constexpr s_v4 v4(s_v3 v, t0 w)
 	result.z = v.z;
 	result.w = (float)w;
 	return result;
-}
-
-func constexpr s_v2 operator+(s_v2 a, s_v2 b)
-{
-	return v2(
-		a.x + b.x,
-		a.y + b.y
-	);
-}
-
-func constexpr s_v2 operator-(s_v2 a, s_v2 b)
-{
-	return v2(
-		a.x - b.x,
-		a.y - b.y
-	);
-}
-
-func constexpr s_v3 operator+(s_v3 a, s_v3 b)
-{
-	return v3(
-		a.x + b.x,
-		a.y + b.y,
-		a.z + b.z
-	);
-}
-
-func constexpr s_v2 operator*(s_v2 a, float b)
-{
-	return v2(
-		a.x * b,
-		a.y * b
-	);
-}
-
-func constexpr s_v2 operator*(s_v2 a, s_v2 b)
-{
-	return v2(
-		a.x * b.x,
-		a.y * b.y
-	);
-}
-
-func constexpr s_v3 operator*(s_v3 a, float b)
-{
-	return v3(
-		a.x * b,
-		a.y * b,
-		a.z * b
-	);
-}
-
-func constexpr s_v2 operator/(s_v2 a, float b)
-{
-	return v2(
-		a.x / b,
-		a.y / b
-	);
-}
-
-func constexpr s_v3 operator/(s_v3 a, float b)
-{
-	return v3(
-		a.x / b,
-		a.y / b,
-		a.z / b
-	);
 }
 
 func void operator+=(s_v2& a, s_v2 b)
@@ -335,66 +112,12 @@ func void operator-=(s_v3& a, s_v3 b)
 	a.z -= b.z;
 }
 
-func constexpr s_v3 operator-(s_v3 a, s_v3 b)
-{
-	return v3(
-		a.x - b.x,
-		a.y - b.y,
-		a.z - b.z
-	);
-}
-
 func constexpr s_quaternion make_quaternion()
 {
 	return {.x = 0, .y = 0, .z = 0, .w = 1};
 }
 
 // -------------------------------------------------------------------------------------------
-
-func s_m4 m4_scale(s_v3 v)
-{
-	s_m4 result = {
-		v.x, 0, 0, 0,
-		0, v.y, 0, 0,
-		0, 0, v.z, 0,
-		0, 0, 0, 1,
-	};
-	return result;
-}
-
-func s_m4 m4_translate(s_v3 v)
-{
-	s_m4 result = {
-		1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		v.x, v.y, v.z, 1,
-	};
-	return result;
-}
-
-func s_m4 m4_identity()
-{
-	s_m4 result = zero;
-	result.all2[0][0] = 1;
-	result.all2[1][1] = 1;
-	result.all2[2][2] = 1;
-	result.all2[3][3] = 1;
-	return result;
-}
-
-func s_m4 m4_multiply(s_m4 a, s_m4 b)
-{
-	s_m4 result = zero;
-	for(int i = 0; i < 4; i += 1) {
-		for(int j = 0; j < 4; j += 1) {
-			for(int k = 0; k < 4; k += 1) {
-				result.all2[j][i] += a.all2[k][i] * b.all2[j][k];
-			}
-		}
-	}
-	return result;
-}
 
 func s_m4 make_orthographic(float left, float right, float bottom, float top, float near, float far)
 {
@@ -412,126 +135,6 @@ func s_m4 make_orthographic(float left, float right, float bottom, float top, fl
 	result.all2[3][2] = 0.5f * (near + far) / (near - far);
 
 	return result;
-}
-
-func s_m4 make_perspective(float FOV, float AspectRatio, float Near, float Far)
-{
-	s_m4 Result = zero;
-
-	// See https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
-
-	float Cotangent = 1.0f / tanf(FOV * (c_pi / 360.0f));
-
-	Result.all2[0][0] = Cotangent / AspectRatio;
-
-	Result.all2[1][1] = Cotangent;
-
-	Result.all2[2][3] = -1.0f;
-	Result.all2[2][2] = (Near + Far) / (Near - Far);
-	Result.all2[3][2] = (2.0f * Near * Far) / (Near - Far);
-	Result.all2[3][3] = 0.0f;
-
-	return (Result);
-}
-
-func s_m4 look_at(s_v3 eye, s_v3 target, s_v3 up)
-{
-	s_m4 world_to_cam = zero;
-	s_v3 front = v3_normalized(target - eye);
-	s_v3 side = v3_normalized(v3_cross(front, up));
-	s_v3 top = v3_normalized(v3_cross(side, front));
-
-	world_to_cam.all[0] = side.x;
-	world_to_cam.all[1] = top.x;
-	world_to_cam.all[2] = -front.x;
-	world_to_cam.all[3] = 0;
-
-	world_to_cam.all[4] = side.y;
-	world_to_cam.all[5] = top.y;
-	world_to_cam.all[6] = -front.y;
-	world_to_cam.all[7] = 0;
-
-	world_to_cam.all[8] = side.z;
-	world_to_cam.all[9] = top.z;
-	world_to_cam.all[10] = -front.z;
-	world_to_cam.all[11] = 0;
-
-	s_v3 x = v3(world_to_cam.all[0], world_to_cam.all[4], world_to_cam.all[8]);
-	s_v3 y = v3(world_to_cam.all[1], world_to_cam.all[5], world_to_cam.all[9]);
-	s_v3 z = v3(world_to_cam.all[2], world_to_cam.all[6], world_to_cam.all[10]);
-
-	world_to_cam.all[12] = -v3_dot(x, eye);
-	world_to_cam.all[13] = -v3_dot(y, eye);
-	world_to_cam.all[14] = -v3_dot(z, eye);
-	world_to_cam.all[15] = 1.0f;
-
-	return world_to_cam;
-}
-
-func s_m4 m4_rotate(float angle, s_v3 axis)
-{
-
-	s_m4 result = m4_identity();
-
-	axis = v3_normalized(axis);
-
-	float SinTheta = sinf(angle);
-	float CosTheta = cosf(angle);
-	float CosValue = 1.0f - CosTheta;
-
-	result.all2[0][0] = (axis.x * axis.x * CosValue) + CosTheta;
-	result.all2[0][1] = (axis.x * axis.y * CosValue) + (axis.z * SinTheta);
-	result.all2[0][2] = (axis.x * axis.z * CosValue) - (axis.y * SinTheta);
-
-	result.all2[1][0] = (axis.y * axis.x * CosValue) - (axis.z * SinTheta);
-	result.all2[1][1] = (axis.y * axis.y * CosValue) + CosTheta;
-	result.all2[1][2] = (axis.y * axis.z * CosValue) + (axis.x * SinTheta);
-
-	result.all2[2][0] = (axis.z * axis.x * CosValue) + (axis.y * SinTheta);
-	result.all2[2][1] = (axis.z * axis.y * CosValue) - (axis.x * SinTheta);
-	result.all2[2][2] = (axis.z * axis.z * CosValue) + CosTheta;
-
-	return result;
-}
-
-
-func s_v3 v3_cross(s_v3 a, s_v3 b)
-{
-	s_v3 Result;
-
-	Result.x = (a.y * b.z) - (a.z * b.y);
-	Result.y = (a.z * b.x) - (a.x * b.z);
-	Result.z = (a.x * b.y) - (a.y * b.x);
-
-	return (Result);
-}
-
-func float v3_dot(s_v3 a, s_v3 b)
-{
-	float Result = (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
-	return (Result);
-}
-
-func s_v3 v3_normalized(s_v3 v)
-{
-	s_v3 result = v;
-	float length = v3_length(v);
-	if(length != 0) {
-		result.x /= length;
-		result.y /= length;
-		result.z /= length;
-	}
-	return result;
-}
-
-func float v3_length_squared(s_v3 v)
-{
-	return v.x * v.x + v.y * v.y + v.z * v.z;
-}
-
-func float v3_length(s_v3 v)
-{
-	return sqrtf(v3_length_squared(v));
 }
 
 func s_quaternion dir_to_quaternion(s_v3 dir)
@@ -973,10 +576,6 @@ func b8 sphere_vs_sphere(s_v3 pos1, float r1, s_v3 pos2, float r2)
 	return result;
 }
 
-func void scale_m4_by_radius(s_m4* out, float radius)
-{
-	*out = m4_multiply(*out, m4_scale(v3(radius * 2)));
-}
 
 template <typename t>
 func t max(t a, t b)
@@ -1115,4 +714,21 @@ func s_v2 v2_from_angle(float angle)
 	result.x = cosf(angle);
 	result.y = sinf(angle);
 	return result;
+}
+
+func s_quaternion quaternion_multiply(s_quaternion second, s_quaternion first)
+{
+	s_quaternion result = {
+		(first.w * second.x) + (first.x * second.w) + (first.y * second.z) - (first.z * second.y),
+		(first.w * second.y) - (first.x * second.z) + (first.y * second.w) + (first.z * second.x),
+		(first.w * second.z) + (first.x * second.y) - (first.y * second.x) + (first.z * second.w),
+		(first.w * second.w) - (first.x * second.x) - (first.y * second.y) - (first.z * second.z)
+	};
+
+	return result;
+}
+
+func s_quaternion operator*(s_quaternion second, s_quaternion first)
+{
+	return quaternion_multiply(second, first);
 }
