@@ -12,7 +12,8 @@ func void bind_framebuffer(u32 fbo);
 func void clear_framebuffer_color(u32 fbo, s_v4 color);
 func void clear_framebuffer_depth(u32 fbo);
 func void render_flush(s_render_flush_data data, b8 reset_render_count);
-func void add_to_render_group(s_instance_data data, e_shader shader_id, e_texture texture_id, e_mesh mesh_id);
+template <typename t>
+func void add_to_render_group(t data, e_shader shader_id, e_texture texture_id, e_mesh mesh_id);
 func s_shader load_shader_from_file(char* file, s_linear_arena* arena);
 func void set_window_size(int width, int height);
 func s_render_flush_data make_render_flush_data(s_v3 cam_pos, s_v3 player_pos);
@@ -52,8 +53,6 @@ func s_v2 wxy(float x, float y);
 func s_v2 wcxy(float x, float y);
 func b8 do_button(s_len_str text, s_v2 pos, b8 centered);
 func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out);
-func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size);
-func b8 mouse_vs_rect_center(s_v2 pos, s_v2 size);
 func b8 is_key_pressed(int key, b8 consume);
 template <int n>
 func void cstr_into_builder(s_str_builder<n>* builder, char* str);
@@ -69,3 +68,4 @@ func void init_obstacles();
 func b8 sphere_out_of_bounds_left(s_v3 pos, float radius);
 func b8 sphere_out_of_bounds_right(s_v3 pos, float radius);
 func s_v3 get_wanted_cam_pos(s_v3 player_pos);
+func s_v2 get_rect_normal_of_closest_edge(s_v2 p, s_v2 center, s_v2 size);

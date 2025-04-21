@@ -109,6 +109,7 @@ enum e_mesh
 	e_mesh_quad,
 	e_mesh_cube,
 	e_mesh_sphere,
+	e_mesh_line,
 	e_mesh_count,
 };
 
@@ -125,6 +126,7 @@ enum e_shader
 	e_shader_text,
 	e_shader_background,
 	e_shader_teleporter,
+	e_shader_line,
 	e_shader_count,
 };
 
@@ -140,6 +142,7 @@ global constexpr char* c_shader_path_arr[e_shader_count] = {
 	"shaders/text.shader",
 	"shaders/background.shader",
 	"shaders/teleporter.shader",
+	"shaders/line.shader",
 };
 
 struct s_text_iterator
@@ -157,6 +160,7 @@ enum e_texture
 	e_texture_noise,
 	e_texture_font,
 	e_texture_checkpoint,
+	e_texture_light,
 	e_texture_count
 };
 
@@ -165,6 +169,7 @@ global constexpr char* c_texture_path_arr[e_texture_count] = {
 	"assets/noise.png",
 	"",
 	"assets/checkpoint.png",
+	"",
 };
 
 enum e_game_state1
@@ -292,6 +297,16 @@ struct s_instance_data
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+struct s_instance_data1
+{
+	s_v2 start;
+	s_v2 end;
+	float width;
+	s_v4 color;
+};
+#pragma pack(pop)
+
 struct s_fbo
 {
 	s_v2i size;
@@ -314,6 +329,7 @@ struct s_render_flush_data
 
 struct s_render_group
 {
+	int element_size;
 	e_shader shader_id;
 	e_texture texture_id;
 	e_mesh mesh_id;
@@ -557,6 +573,8 @@ struct s_game
 	float speed;
 	s_input_name_state input_name_state;
 
+	s_fbo light_fbo;
+
 	b8 turn_off_death_sound;
 	b8 hide_timer;
 	b8 hide_depth;
@@ -592,7 +610,7 @@ struct s_game
 	int render_instance_count[e_shader_count][e_texture_count][e_mesh_count];
 	int render_instance_max_elements[e_shader_count][e_texture_count][e_mesh_count];
 	int render_group_index_arr[e_shader_count][e_texture_count][e_mesh_count];
-	s_instance_data* render_instance_arr[e_shader_count][e_texture_count][e_mesh_count];
+	void* render_instance_arr[e_shader_count][e_texture_count][e_mesh_count];
 	s_list<s_render_group, 128> render_group_arr;
 };
 

@@ -109,7 +109,7 @@ m_dll_export void init(s_platform_data* platform_data)
 		cursor += 10 * c_mb;
 	}
 	{
-		game->render_frame_arena = make_arena_from_memory(cursor, 10 * c_mb);
+		game->render_frame_arena = make_arena_from_memory(cursor, 500 * c_mb);
 		cursor += 10 * c_mb;
 	}
 	{
@@ -172,6 +172,44 @@ m_dll_export void init(s_platform_data* platform_data)
 		game->mesh_arr[e_mesh_sphere] = make_mesh_from_obj_file("assets/sphere.obj", &game->render_frame_arena);
 	}
 
+	{
+		s_mesh* mesh = &game->mesh_arr[e_mesh_line];
+		mesh->vertex_count = 6;
+		gl(glGenVertexArrays(1, &mesh->vao));
+		gl(glBindVertexArray(mesh->vao));
+
+		gl(glGenBuffers(1, &mesh->instance_vbo.id));
+		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo.id));
+
+		u8* offset = 0;
+		constexpr int stride = sizeof(float) * 9;
+		int attrib_index = 0;
+
+		gl(glVertexAttribPointer(attrib_index, 2, GL_FLOAT, GL_FALSE, stride, offset)); // line start
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 2;
+
+		gl(glVertexAttribPointer(attrib_index, 2, GL_FLOAT, GL_FALSE, stride, offset)); // line end
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 2;
+
+		gl(glVertexAttribPointer(attrib_index, 1, GL_FLOAT, GL_FALSE, stride, offset)); // line width
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 1;
+
+		gl(glVertexAttribPointer(attrib_index, 4, GL_FLOAT, GL_FALSE, stride, offset)); // instance color
+		gl(glEnableVertexAttribArray(attrib_index));
+		gl(glVertexAttribDivisor(attrib_index, 1));
+		attrib_index += 1;
+		offset += sizeof(float) * 4;
+	}
+
 	for(int i = 0; i < e_sound_count; i += 1) {
 		game->sound_arr[i] = load_sound_from_file(c_sound_data_arr[i].path, c_sound_data_arr[i].volume);
 	}
@@ -184,6 +222,22 @@ m_dll_export void init(s_platform_data* platform_data)
 	}
 
 	game->font = load_font_from_file("assets/Inconsolata-Regular.ttf", 128, &game->render_frame_arena);
+
+	{
+		u32* texture = &game->texture_arr[e_texture_light].id;
+		game->light_fbo.size.x = (int)c_world_size.x;
+		game->light_fbo.size.y = (int)c_world_size.y;
+		gl(glGenFramebuffers(1, &game->light_fbo.id));
+		bind_framebuffer(game->light_fbo.id);
+		gl(glGenTextures(1, texture));
+		gl(glBindTexture(GL_TEXTURE_2D, *texture));
+		gl(glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, game->light_fbo.size.x, game->light_fbo.size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR));
+		gl(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR));
+		gl(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *texture, 0));
+		assert(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
+		bind_framebuffer(0);
+	}
 
 	#if defined(__EMSCRIPTEN__)
 	load_or_create_leaderboard_id();
@@ -770,10 +824,12 @@ func void render(float interp_dt, float delta)
 		game->speed = range_lerp(slow, 0, 1, 1, 0.1f);
 	}
 
+	bind_framebuffer(0);
 	clear_framebuffer_depth(0);
 	clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 
 	e_game_state0 state0 = (e_game_state0)game->state0.get_last().value;
+
 
 	switch(state0) {
 
@@ -1421,7 +1477,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 		s_mesh* mesh = &game->mesh_arr[group.mesh_id];
 		int* instance_count = &game->render_instance_count[group.shader_id][group.texture_id][group.mesh_id];
 		assert(*instance_count > 0);
-		s_instance_data* instance_data = game->render_instance_arr[group.shader_id][group.texture_id][group.mesh_id];
+		void* instance_data = game->render_instance_arr[group.shader_id][group.texture_id][group.mesh_id];
 
 		gl(glUseProgram(game->shader_arr[group.shader_id].id));
 
@@ -1440,7 +1496,7 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 
 		gl(glBindVertexArray(mesh->vao));
 		gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo.id));
-		gl(glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(s_instance_data) * *instance_count, instance_data));
+		gl(glBufferSubData(GL_ARRAY_BUFFER, 0, group.element_size * *instance_count, instance_data));
 		gl(glDrawArraysInstanced(GL_TRIANGLES, 0, mesh->vertex_count, *instance_count));
 		if(reset_render_count) {
 			game->render_group_arr.remove_and_swap(group_i);
@@ -1451,12 +1507,14 @@ func void render_flush(s_render_flush_data data, b8 reset_render_count)
 	}
 }
 
-func void add_to_render_group(s_instance_data data, e_shader shader_id, e_texture texture_id, e_mesh mesh_id)
+template <typename t>
+func void add_to_render_group(t data, e_shader shader_id, e_texture texture_id, e_mesh mesh_id)
 {
 	s_render_group render_group = zero;
 	render_group.shader_id = shader_id;
 	render_group.texture_id = texture_id;
 	render_group.mesh_id = mesh_id;
+	render_group.element_size = sizeof(t);
 
 	s_mesh* mesh = &game->mesh_arr[render_group.mesh_id];
 
@@ -1467,7 +1525,7 @@ func void add_to_render_group(s_instance_data data, e_shader shader_id, e_textur
 	}
 	int* count = &game->render_instance_count[render_group.shader_id][render_group.texture_id][render_group.mesh_id];
 	int* max_elements = &game->render_instance_max_elements[render_group.shader_id][render_group.texture_id][render_group.mesh_id];
-	s_instance_data* ptr = game->render_instance_arr[render_group.shader_id][render_group.texture_id][render_group.mesh_id];
+	t* ptr = (t*)game->render_instance_arr[render_group.shader_id][render_group.texture_id][render_group.mesh_id];
 	b8 expand = *max_elements <= *count;
 	b8 get_new_ptr = *count <= 0 || expand;
 	int new_max_elements = *max_elements;
@@ -1480,16 +1538,16 @@ func void add_to_render_group(s_instance_data data, e_shader shader_id, e_textur
 		}
 		if(new_max_elements > mesh->instance_vbo.max_elements) {
 			gl(glBindBuffer(GL_ARRAY_BUFFER, mesh->instance_vbo.id));
-			gl(glBufferData(GL_ARRAY_BUFFER, sizeof(s_instance_data) * new_max_elements, null, GL_DYNAMIC_DRAW));
+			gl(glBufferData(GL_ARRAY_BUFFER, sizeof(t) * new_max_elements, null, GL_DYNAMIC_DRAW));
 			mesh->instance_vbo.max_elements = new_max_elements;
 		}
 	}
 	if(get_new_ptr) {
-		s_instance_data* temp = (s_instance_data*)arena_alloc(&game->render_frame_arena, sizeof(s_instance_data) * new_max_elements);
+		t* temp = (t*)arena_alloc(&game->render_frame_arena, sizeof(t) * new_max_elements);
 		if(*count > 0) {
-			memcpy(temp, ptr, *count * sizeof(s_instance_data));
+			memcpy(temp, ptr, *count * sizeof(t));
 		}
-		game->render_instance_arr[render_group.shader_id][render_group.texture_id][render_group.mesh_id] = temp;
+		game->render_instance_arr[render_group.shader_id][render_group.texture_id][render_group.mesh_id] = (void*)temp;
 		ptr = temp;
 	}
 	*max_elements = new_max_elements;
@@ -2497,7 +2555,7 @@ func b8 do_button(s_len_str text, s_v2 pos, b8 centered)
 		pos += size * 0.5f;
 	}
 
-	b8 hovered = mouse_vs_rect_center(pos, size);
+	b8 hovered = mouse_vs_rect_center(g_mouse, pos, size);
 	s_v4 color = make_color(0.25f);
 	if(hovered) {
 		size += v2(8);
@@ -2532,18 +2590,6 @@ func b8 do_bool_button(s_len_str text, s_v2 pos, b8 centered, b8* out)
 		result = true;
 		*out = !(*out);
 	}
-	return result;
-}
-
-func b8 mouse_vs_rect_topleft(s_v2 pos, s_v2 size)
-{
-	b8 result = rect_vs_rect_topleft(g_mouse, v2(1), pos, size);
-	return result;
-}
-
-func b8 mouse_vs_rect_center(s_v2 pos, s_v2 size)
-{
-	b8 result = rect_vs_rect_center(g_mouse, v2(1), pos, size);
 	return result;
 }
 
@@ -3008,3 +3054,48 @@ func s_v3 get_wanted_cam_pos(s_v3 player_pos)
 	);
 	return result;
 }
+
+func s_v2 get_rect_normal_of_closest_edge(s_v2 p, s_v2 center, s_v2 size)
+{
+	s_v2 edge_arr[] = {
+		v2(center.x - size.x * 0.5f, center.y),
+		v2(center.x + size.x * 0.5f, center.y),
+		v2(center.x, center.y - size.y * 0.5f),
+		v2(center.x, center.y + size.y * 0.5f),
+	};
+	s_v2 normal_arr[] = {
+		v2(-1, 0),
+		v2(1, 0),
+		v2(0, -1),
+		v2(0, 1),
+	};
+	float closest_dist[2] = {9999999, 9999999};
+	int closest_index[2] = {0, 0};
+
+	for(int i = 0; i < 4; i += 1) {
+		float dist;
+		if(i <= 1) {
+			dist = fabsf(p.x - edge_arr[i].x);
+		}
+		else {
+			dist = fabsf(p.y - edge_arr[i].y);
+		}
+		if(dist < closest_dist[0]) {
+			closest_dist[0] = dist;
+			closest_index[0] = i;
+		}
+		else if(dist < closest_dist[1]) {
+			closest_dist[1] = dist;
+			closest_index[1] = i;
+		}
+	}
+	s_v2 result = normal_arr[closest_index[0]];
+
+	// @Note(tkap, 19/04/2025): Probably breaks for very thin rectangles
+	if(fabsf(closest_dist[0] - closest_dist[1]) <= 0.01f) {
+		result += normal_arr[closest_index[1]];
+		result = v2_normalized(result);
+	}
+	return result;
+}
+
