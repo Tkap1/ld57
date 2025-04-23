@@ -291,6 +291,7 @@ enum e_emitter_spawn_type
 {
 	e_emitter_spawn_type_point,
 	e_emitter_spawn_type_sphere,
+	e_emitter_spawn_type_rect_edge,
 };
 
 struct s_particle_color

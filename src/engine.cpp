@@ -828,6 +828,10 @@ func void update_particles()
 					xcase e_emitter_spawn_type_sphere: {
 						particle.pos += random_point_in_sphere(&game->rng, b->spawn_data.x);
 					};
+
+					xcase e_emitter_spawn_type_rect_edge: {
+						particle.pos.xy += random_point_in_rect_edges(&game->rng, b->spawn_data.xy);
+					};
 				}
 				particle.spawn_timestamp = game->render_time;
 				soft_data->particle_arr.add(particle);
