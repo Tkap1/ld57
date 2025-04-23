@@ -232,7 +232,7 @@ struct s_soft_game_data
 
 	s_entity_manager<s_particle_emitter_a, c_max_particle_emitters> emitter_a_arr;
 	s_particle_emitter_b emitter_b_arr[c_max_particle_emitters];
-	s_list<s_particle, 16384> particle_arr;
+	s_list<s_particle, 65536> particle_arr;
 
 	float pre_victory_timestamp;
 };
