@@ -13,6 +13,7 @@ global constexpr float c_boost_radius = 1;
 global constexpr float c_player_radius = 1;
 global constexpr float c_teleporter_radius = 8;
 global constexpr float c_bottom = 2000;
+global constexpr int c_max_particle_emitters = 64;
 
 global constexpr float c_game_speed_arr[] = {
 	0.0f, 0.01f, 0.1f, 0.25f, 0.5f,

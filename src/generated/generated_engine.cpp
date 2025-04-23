@@ -26,3 +26,11 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena);
 func char* skip_whitespace(char* str);
 func s_v2 wxy(float x, float y);
 func s_v2 wcxy(float x, float y);
+func void update_particles();
+func void add_emitter(s_particle_emitter_a a, s_particle_emitter_b b);
+template <typename t, int n>
+func int entity_manager_add(s_entity_manager<t, n>* manager, t new_entity);
+template <typename t, int n>
+func void entity_manager_remove(s_entity_manager<t, n>* manager, int index);
+template <typename t, int n>
+func void entity_manager_reset(s_entity_manager<t, n>* manager);

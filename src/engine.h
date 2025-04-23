@@ -163,7 +163,6 @@ struct s_time_format
 	int milliseconds;
 };
 
-
 struct s_fbo
 {
 	s_v2i size;
@@ -287,5 +286,61 @@ struct s_shader
 {
 	u32 id;
 };
+
+enum e_emitter_spawn_type
+{
+	e_emitter_spawn_type_point,
+	e_emitter_spawn_type_sphere,
+};
+
+struct s_particle_emitter_a
+{
+	b8 follow_emitter;
+	s_v3 pos;
+	float shrink;
+	b8 color_rand_per_channel;
+	float particle_duration;
+	float particle_duration_rand;
+	float radius;
+	float radius_rand;
+	s_v4 color;
+	float color_rand;
+	s_v3 dir;
+	s_v3 dir_rand;
+	float speed;
+	float speed_rand;
+};
+
+struct s_particle_emitter_b
+{
+	b8 existed_in_previous_frame;
+	float duration;
+	float creation_timestamp;
+	float last_emit_timestamp;
+	float particles_per_second = 1;
+	int particle_count = 1;
+	int num_alive_particles;
+	e_emitter_spawn_type spawn_type;
+	s_v3 spawn_data;
+};
+
+struct s_particle
+{
+	int emitter_index;
+	u64 seed;
+	s_v3 pos;
+	float spawn_timestamp;
+};
+
+template <typename t, int n>
+struct s_entity_manager
+{
+	int count;
+	b8 active[n];
+	int free_list[n];
+	t data[n];
+};
+
+
 
 #include "generated/generated_engine.cpp"

@@ -789,3 +789,147 @@ func s_v2 wcxy(float x, float y)
 	s_v2 result = c_world_center * v2(x, y);
 	return result;
 }
+
+func void update_particles()
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+
+	for(int i = 0; i < c_max_particle_emitters; i += 1) {
+		if(!soft_data->emitter_a_arr.active[i]) { continue; }
+		s_particle_emitter_a a = soft_data->emitter_a_arr.data[i];
+		s_particle_emitter_b* b = &soft_data->emitter_b_arr[i];
+		s_time_data spawn_time_data = get_time_data(game->render_time, b->last_emit_timestamp, 1.0f / b->particles_per_second);
+
+		s_time_data expire_time_data = zero;
+
+		// @Note(tkap, 23/04/2025): Not infinite
+		if(b->duration >= 0) {
+			expire_time_data = get_time_data(game->render_time, b->creation_timestamp, b->duration);
+		}
+
+		while(spawn_time_data.percent >= 1 && (expire_time_data.percent < 1 || !b->existed_in_previous_frame)) {
+			spawn_time_data.percent -= 1;
+			b->last_emit_timestamp = game->render_time;
+
+			for(int particle_i = 0; particle_i < b->particle_count; particle_i += 1) {
+				b->num_alive_particles += 1;
+
+				s_particle particle = zero;
+				particle.emitter_index = i;
+				particle.seed = randu(&game->rng);
+				if(!a.follow_emitter) {
+					particle.pos = a.pos;
+				}
+
+				switch(b->spawn_type) {
+					xcase e_emitter_spawn_type_point: {
+					};
+
+					xcase e_emitter_spawn_type_sphere: {
+						particle.pos += random_point_in_sphere(&game->rng, b->spawn_data.x);
+					};
+				}
+				particle.spawn_timestamp = game->render_time;
+				soft_data->particle_arr.add(particle);
+			}
+		}
+
+		if(expire_time_data.percent >= 1 && b->num_alive_particles <= 0) {
+			entity_manager_remove(&soft_data->emitter_a_arr, i);
+		}
+		b->existed_in_previous_frame = true;
+	}
+
+	foreach_ptr(particle_i, particle, soft_data->particle_arr) {
+		s_rng rng = make_rng(particle->seed);
+		s_particle_emitter_a data_a = soft_data->emitter_a_arr.data[particle->emitter_index];
+		s_particle_emitter_b* data_b = &soft_data->emitter_b_arr[particle->emitter_index];
+		float duration = data_a.particle_duration * (1.0f - randf32(&rng) * data_a.particle_duration_rand);
+		s_time_data time_data = get_time_data(game->render_time, particle->spawn_timestamp, duration);
+		float radius = data_a.radius * (1.0f - randf32(&rng) * data_a.radius_rand);
+		float speed = data_a.speed * (1.0f - randf32(&rng) * data_a.speed_rand);
+		radius *= 1.0f - time_data.percent * data_a.shrink;
+
+		s_v3 dir = zero;
+		dir.x = data_a.dir.x * (1.0f - randf32(&rng) * data_a.dir_rand.x * 2);
+		dir.y = data_a.dir.y * (1.0f - randf32(&rng) * data_a.dir_rand.y * 2);
+		dir.z = data_a.dir.z * (1.0f - randf32(&rng) * data_a.dir_rand.z * 2);
+		dir = v3_normalized(dir);
+
+		s_v4 color = data_a.color;
+		if(data_a.color_rand_per_channel) {
+			float r = (1.0f - randf32(&rng) * data_a.color_rand);
+			float g = (1.0f - randf32(&rng) * data_a.color_rand);
+			float b = (1.0f - randf32(&rng) * data_a.color_rand);
+			color.r *= r;
+			color.g *= g;
+			color.b *= b;
+		}
+		else {
+			float r = (1.0f - randf32(&rng) * data_a.color_rand);
+			color = multiply_rgb(data_a.color, r);
+		}
+		color.a = 1.0f - time_data.percent;
+		particle->pos += dir * speed;
+
+		s_v3 pos = particle->pos;
+		if(data_a.follow_emitter) {
+			pos += data_a.pos;
+		}
+
+		{
+			s_instance_data data = zero;
+			data.model = m4_translate(pos);
+			scale_m4_by_radius(&data.model, radius);
+			data.color = color;
+			add_to_render_group(data, e_shader_circle, e_texture_white, e_mesh_quad);
+		}
+		if(time_data.percent >= 1) {
+			soft_data->particle_arr.remove_and_swap(particle_i);
+			particle_i -= 1;
+			data_b->num_alive_particles -= 1;
+		}
+	}
+}
+
+func void add_emitter(s_particle_emitter_a a, s_particle_emitter_b b)
+{
+	s_soft_game_data* soft_data = &game->hard_data.soft_data;
+	b.creation_timestamp = game->render_time;
+	b.last_emit_timestamp = game->render_time - 1.0f / b.particles_per_second;
+
+	int index = entity_manager_add(&soft_data->emitter_a_arr, a);
+	soft_data->emitter_b_arr[index] = b;
+}
+
+template <typename t, int n>
+func int entity_manager_add(s_entity_manager<t, n>* manager, t new_entity)
+{
+	assert(manager->count < n);
+	int index = manager->free_list[manager->count];
+	assert(!manager->active[index]);
+	manager->data[index] = new_entity;
+	manager->active[index] = true;
+	manager->count += 1;
+	return index;
+}
+
+template <typename t, int n>
+func void entity_manager_remove(s_entity_manager<t, n>* manager, int index)
+{
+	assert(manager->active[index]);
+	assert(manager->count > 0);
+	manager->count -= 1;
+	manager->active[index] = false;
+	manager->free_list[manager->count] = index;
+}
+
+template <typename t, int n>
+func void entity_manager_reset(s_entity_manager<t, n>* manager)
+{
+	manager->count = 0;
+	memset(manager->active, 0, sizeof(manager->active));
+	for(int i = 0; i < n; i += 1) {
+		manager->free_list[i] = i;
+	}
+}

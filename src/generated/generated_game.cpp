@@ -18,8 +18,6 @@ func s_shader load_shader_from_file(char* file, s_linear_arena* arena);
 func b8 is_boost_hovered(s_v3 mouse_point, s_v3 boost_pos);
 func void set_player_state(e_player_state state);
 func void try_to_dash();
-func void spawn_particles(int count, s_v3 pos, s_particle_spawn_data data);
-func void update_particles();
 func void set_state0_next_frame(e_game_state0 state);
 func void set_temp_state0_next_frame(e_game_state0 state);
 func void pop_game_state();

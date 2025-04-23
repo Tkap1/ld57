@@ -474,6 +474,30 @@ func void update()
 				game->do_soft_reset = false;
 				memset(soft_data, 0, sizeof(s_soft_game_data));
 
+				entity_manager_reset(&soft_data->emitter_a_arr);
+
+				{
+					s_particle_emitter_a data = zero;
+					data.shrink = 0.5f;
+					data.particle_duration = 0.5f;
+					data.particle_duration_rand = 0.5f;
+					data.radius = 1.5f;
+					data.radius_rand = 0.25f;
+					data.color = hex_to_rgb(0xFAD201);
+					data.color_rand = 1.0f;
+					data.dir = v3(0.5f, 1, 1.0f);
+					data.dir_rand = v3(1);
+					data.speed = 0.01f;
+					data.speed_rand = 0.5f;
+
+					s_particle_emitter_b b = zero;
+					b.duration = -1;
+					b.particles_per_second = 100;
+					b.spawn_type = e_emitter_spawn_type_sphere;
+					b.spawn_data.x = c_player_radius;
+					add_emitter(data, b);
+				}
+
 
 				// @Note(tkap, 07/04/2025): If restarting without a checkpoint, reset the timer so that the player doesn't have to
 				if(!hard_data->curr_checkpoint.valid) {
@@ -552,19 +576,23 @@ func void update()
 						play_sound(e_sound_pop);
 
 						{
-							s_particle_spawn_data data = zero;
-							data.shrink = 0.5f;
-							data.duration = 0.5f;
-							data.duration_rand = 0.5f;
-							data.radius = 1.5f;
-							data.radius_rand = 0.25f;
-							data.color = make_color(0.5f, 1.0f, 0.5f);
-							data.color_rand = 1.0f;
-							data.dir = v3(1);
-							data.dir_rand = v3(1);
-							data.speed = 0.1f;
-							data.speed_rand = 0.5f;
-							spawn_particles(64, boost.pos, data);
+							s_particle_emitter_a a = zero;
+							a.shrink = 0.5f;
+							a.particle_duration = 0.5f;
+							a.particle_duration_rand = 0.5f;
+							a.radius = 1.5f;
+							a.radius_rand = 0.25f;
+							a.color = make_color(0.5f, 1.0f, 0.5f);
+							a.color_rand = 1.0f;
+							a.dir = v3(1);
+							a.dir_rand = v3(1);
+							a.speed = 0.1f;
+							a.speed_rand = 0.5f;
+							a.pos = boost.pos;
+
+							s_particle_emitter_b b = zero;
+							b.particle_count = 64;
+							add_emitter(a, b);
 						}
 					}
 				} break;
@@ -635,10 +663,10 @@ func void update()
 							hard_data->checkpoint_hit_timestamp_arr[index] = game->update_time;
 
 							{
-								s_particle_spawn_data data = zero;
+								s_particle_emitter_a data = zero;
 								data.shrink = 0.5f;
-								data.duration = 3.5f;
-								data.duration_rand = 0.5f;
+								data.particle_duration = 3.5f;
+								data.particle_duration_rand = 0.5f;
 								data.radius = 1.5f;
 								data.radius_rand = 0.25f;
 								data.color = hex_to_rgb(0x3B83BD);
@@ -647,8 +675,11 @@ func void update()
 								data.dir_rand = v3(1);
 								data.speed = 0.1f;
 								data.speed_rand = 0.5f;
+								data.pos = pos;
 
-								spawn_particles(128, pos, data);
+								s_particle_emitter_b b = zero;
+								b.particle_count = 128;
+								add_emitter(data, b);
 							}
 						}
 					}
@@ -1107,39 +1138,8 @@ func void render(float interp_dt, float delta)
 					}
 
 					// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		particles start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-					{
-						s_particle_spawn_data data = zero;
-						data.shrink = 0.5f;
-						data.duration = 0.5f;
-						data.duration_rand = 0.5f;
-						data.radius = 1.5f;
-						data.radius_rand = 0.25f;
-						data.color = hex_to_rgb(0xFAD201);
-						data.color_rand = 1.0f;
-						data.dir = v3(0.5f, 1, 1.0f);
-						data.dir_rand = v3(1);
-						data.speed = 0.01f;
-						data.speed_rand = 0.5f;
 
-						s_v3 pos = random_point_in_sphere(&game->rng, c_player_radius);
-						spawn_particles(1, player_pos + pos, data);
-					}
-
-					{
-						s_particle_spawn_data data = zero;
-						data.shrink = 0.5f;
-						data.duration = 0.5f;
-						data.duration_rand = 0.5f;
-						data.radius = 1.5f;
-						data.radius_rand = 0.25f;
-						data.color = hex_to_rgb(0x0);
-						data.dir = v3(0.5f, 1, 1.0f);
-						data.dir_rand = v3(1);
-						data.speed = 0.01f;
-						data.speed_rand = 0.5f;
-
-						spawn_particles(4, ray_at_y(ray, 0.0f), data);
-					}
+					soft_data->emitter_a_arr.data[0].pos = player_pos;
 
 					update_particles();
 					{
@@ -1682,63 +1682,6 @@ func void try_to_dash()
 				play_sound(e_sound_dash);
 			}
 		} break;
-	}
-}
-
-func void spawn_particles(int count, s_v3 pos, s_particle_spawn_data data)
-{
-	s_soft_game_data* soft_data = &game->hard_data.soft_data;
-	for(int i = 0; i < count; i += 1) {
-		s_particle particle = zero;
-		particle.pos = pos;
-		particle.radius = data.radius * (1.0f - randf32(&game->rng) * data.radius_rand);
-		particle.spawn_timestamp = game->render_time;
-		particle.duration = data.duration * (1.0f - randf32(&game->rng) * data.duration_rand);
-		particle.speed = data.speed * (1.0f - randf32(&game->rng) * data.speed_rand);
-		particle.shrink = data.shrink;
-		if(data.color_rand_per_channel) {
-			float r = (1.0f - randf32(&game->rng) * data.color_rand);
-			float g = (1.0f - randf32(&game->rng) * data.color_rand);
-			float b = (1.0f - randf32(&game->rng) * data.color_rand);
-			particle.color = data.color;
-			particle.color.r *= r;
-			particle.color.g *= g;
-			particle.color.b *= b;
-		}
-		else {
-			float r = (1.0f - randf32(&game->rng) * data.color_rand);
-			particle.color = multiply_rgb(data.color, r);
-		}
-		particle.dir.x = data.dir.x * (1.0f - randf32(&game->rng) * data.dir_rand.x * 2);
-		particle.dir.y = data.dir.y * (1.0f - randf32(&game->rng) * data.dir_rand.y * 2);
-		particle.dir.z = data.dir.z * (1.0f - randf32(&game->rng) * data.dir_rand.z * 2);
-		particle.dir = v3_normalized(particle.dir);
-		soft_data->particle_arr.add(particle);
-	}
-}
-
-func void update_particles()
-{
-	s_soft_game_data* soft_data = &game->hard_data.soft_data;
-	foreach_ptr(particle_i, particle, soft_data->particle_arr) {
-		float passed = game->render_time - particle->spawn_timestamp;
-		float percent_done = passed / particle->duration;
-		float speed = particle->speed;
-		particle->pos += particle->dir * speed;
-		s_v4 color = particle->color;
-		color.a = 1.0f - percent_done;
-		float radius = particle->radius * (1.0f - percent_done * particle->shrink);
-		{
-			s_instance_data data = zero;
-			data.model = m4_translate(particle->pos);
-			scale_m4_by_radius(&data.model, radius);
-			data.color = color;
-			add_to_render_group(data, e_shader_circle, e_texture_white, e_mesh_quad);
-		}
-		if(passed >= particle->duration) {
-			soft_data->particle_arr.remove_and_swap(particle_i);
-			particle_i -= 1;
-		}
 	}
 }
 
@@ -2300,4 +2243,3 @@ func s_v2 get_rect_normal_of_closest_edge(s_v2 p, s_v2 center, s_v2 size)
 	}
 	return result;
 }
-

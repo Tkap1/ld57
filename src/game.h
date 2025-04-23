@@ -168,34 +168,6 @@ struct s_projectile
 	s_v4 color;
 };
 
-struct s_particle_spawn_data
-{
-	float shrink;
-	b8 color_rand_per_channel;
-	float duration;
-	float duration_rand;
-	float radius;
-	float radius_rand;
-	s_v4 color;
-	float color_rand;
-	s_v3 dir;
-	s_v3 dir_rand;
-	float speed;
-	float speed_rand;
-};
-
-struct s_particle
-{
-	s_v3 pos;
-	s_v3 dir;
-	float speed;
-	float shrink;
-	float duration;
-	float spawn_timestamp;
-	float radius;
-	s_v4 color;
-};
-
 enum e_game_state0
 {
 	e_game_state0_main_menu,
@@ -257,7 +229,11 @@ struct s_soft_game_data
 	float want_dash_timestamp;
 	int hovered_boost;
 	float defeat_timestamp;
+
+	s_entity_manager<s_particle_emitter_a, c_max_particle_emitters> emitter_a_arr;
+	s_particle_emitter_b emitter_b_arr[c_max_particle_emitters];
 	s_list<s_particle, 16384> particle_arr;
+
 	float pre_victory_timestamp;
 };
 
