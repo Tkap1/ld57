@@ -856,19 +856,7 @@ func void update_particles()
 		dir.z = data_a.dir.z * (1.0f - randf32(&rng) * data_a.dir_rand.z * 2);
 		dir = v3_normalized(dir);
 
-		s_v4 color = data_a.color;
-		if(data_a.color_rand_per_channel) {
-			float r = (1.0f - randf32(&rng) * data_a.color_rand);
-			float g = (1.0f - randf32(&rng) * data_a.color_rand);
-			float b = (1.0f - randf32(&rng) * data_a.color_rand);
-			color.r *= r;
-			color.g *= g;
-			color.b *= b;
-		}
-		else {
-			float r = (1.0f - randf32(&rng) * data_a.color_rand);
-			color = multiply_rgb(data_a.color, r);
-		}
+		s_v4 color = get_particle_color(&rng, time_data.percent, data_a.color_arr);
 		color.a = 1.0f - time_data.percent;
 		particle->pos += dir * speed;
 
@@ -932,4 +920,38 @@ func void entity_manager_reset(s_entity_manager<t, n>* manager)
 	for(int i = 0; i < n; i += 1) {
 		manager->free_list[i] = i;
 	}
+}
+
+func s_v4 get_particle_color(s_rng* rng, float percent, s_list<s_particle_color, 4> color_arr)
+{
+	s_particle_color choice[2] = {color_arr[0], color_arr[at_most(color_arr.count - 1, 1)]};
+
+	foreach_val(color_i, color, color_arr) {
+		if(color.percent <= percent) {
+			choice[0] = color;
+			choice[1] = color_arr[at_most(color_arr.count - 1, color_i + 1)];
+		}
+	}
+
+	float p = ilerp(choice[0].percent, choice[1].percent, percent);
+	s_v4 choice2[2] = zero;
+
+	for(int i = 0; i < 2; i += 1) {
+		s_v4 temp = choice[i].color;
+		if(choice[i].color_rand_per_channel) {
+			float r = (1.0f - randf32(rng) * choice[i].color_rand);
+			float g = (1.0f - randf32(rng) * choice[i].color_rand);
+			float b = (1.0f - randf32(rng) * choice[i].color_rand);
+			temp.r *= r;
+			temp.g *= g;
+			temp.b *= b;
+		}
+		else {
+			float r = (1.0f - randf32(rng) * choice[i].color_rand);
+			temp = multiply_rgb(choice[i].color, r);
+		}
+		choice2[i] = temp;
+	}
+	s_v4 result = lerp_color(choice2[0], choice2[1], p);
+	return result;
 }

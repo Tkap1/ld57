@@ -483,8 +483,19 @@ func void update()
 					data.particle_duration_rand = 0.5f;
 					data.radius = 1.5f;
 					data.radius_rand = 0.25f;
-					data.color = hex_to_rgb(0xFAD201);
-					data.color_rand = 1.0f;
+					{
+						s_particle_color c = zero;
+						c.color = hex_to_rgb(0xFAD201);
+						c.color_rand = 1.0f;
+						data.color_arr.add(c);
+					}
+					{
+						s_particle_color c = zero;
+						c.color = make_color(1,0,0);
+						c.color_rand = 1.0f;
+						c.percent = 0.5f;
+						data.color_arr.add(c);
+					}
 					data.dir = v3(0.5f, 1, 1.0f);
 					data.dir_rand = v3(1);
 					data.speed = 0.01f;
@@ -492,7 +503,7 @@ func void update()
 
 					s_particle_emitter_b b = zero;
 					b.duration = -1;
-					b.particles_per_second = 100;
+					b.particles_per_second = 200;
 					b.spawn_type = e_emitter_spawn_type_sphere;
 					b.spawn_data.x = c_player_radius;
 					add_emitter(data, b);
@@ -582,8 +593,12 @@ func void update()
 							a.particle_duration_rand = 0.5f;
 							a.radius = 1.5f;
 							a.radius_rand = 0.25f;
-							a.color = make_color(0.5f, 1.0f, 0.5f);
-							a.color_rand = 1.0f;
+							{
+								s_particle_color c = zero;
+								c.color = make_color(0.5f, 1.0f, 0.5f);
+								c.color_rand = 1.0f;
+								a.color_arr.add(c);
+							}
 							a.dir = v3(1);
 							a.dir_rand = v3(1);
 							a.speed = 0.1f;
@@ -669,8 +684,15 @@ func void update()
 								data.particle_duration_rand = 0.5f;
 								data.radius = 1.5f;
 								data.radius_rand = 0.25f;
-								data.color = hex_to_rgb(0x3B83BD);
-								data.color_rand = 1.0f;
+
+								{
+									s_particle_color c = zero;
+									c.color = hex_to_rgb(0x3B83BD);
+									c.color_rand = 1.0f;
+									data.color_arr.add(c);
+								}
+
+
 								data.dir = v3(1);
 								data.dir_rand = v3(1);
 								data.speed = 0.1f;

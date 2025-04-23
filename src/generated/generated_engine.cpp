@@ -34,3 +34,4 @@ template <typename t, int n>
 func void entity_manager_remove(s_entity_manager<t, n>* manager, int index);
 template <typename t, int n>
 func void entity_manager_reset(s_entity_manager<t, n>* manager);
+func s_v4 get_particle_color(s_rng* rng, float percent, s_list<s_particle_color, 4> color_arr);

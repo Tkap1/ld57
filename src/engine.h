@@ -293,22 +293,28 @@ enum e_emitter_spawn_type
 	e_emitter_spawn_type_sphere,
 };
 
+struct s_particle_color
+{
+	b8 color_rand_per_channel;
+	s_v4 color;
+	float color_rand;
+	float percent;
+};
+
 struct s_particle_emitter_a
 {
 	b8 follow_emitter;
 	s_v3 pos;
 	float shrink;
-	b8 color_rand_per_channel;
 	float particle_duration;
 	float particle_duration_rand;
 	float radius;
 	float radius_rand;
-	s_v4 color;
-	float color_rand;
 	s_v3 dir;
 	s_v3 dir_rand;
 	float speed;
 	float speed_rand;
+	s_list<s_particle_color, 4> color_arr;
 };
 
 struct s_particle_emitter_b
