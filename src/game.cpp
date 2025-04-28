@@ -294,7 +294,7 @@ m_dll_export void do_game(s_platform_data* platform_data)
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		handle state start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 	{
-		b8 state_changed = handle_state(&game->state0);
+		b8 state_changed = handle_state(&game->state0, game->render_time);
 		if(state_changed) {
 			game->accumulator += c_update_delay;
 		}
@@ -880,7 +880,7 @@ func void render(float interp_dt, float delta)
 		case e_game_state0_main_menu: {
 
 			if(do_button(S("Play"), wxy(0.5f, 0.5f), true) || is_key_pressed(SDLK_RETURN, true)) {
-				add_state(&game->state0, e_game_state0_play);
+				add_state_transition(&game->state0, e_game_state0_play, game->render_time, c_transition_time);
 				game->do_hard_reset = true;
 			}
 
@@ -888,11 +888,11 @@ func void render(float interp_dt, float delta)
 				#if defined(__EMSCRIPTEN__)
 				get_leaderboard(c_leaderboard_id);
 				#endif
-				add_state(&game->state0, e_game_state0_leaderboard);
+				add_state_transition(&game->state0, e_game_state0_leaderboard, game->render_time, c_transition_time);
 			}
 
 			if(do_button(S("Options"), wxy(0.5f, 0.7f), true)) {
-				add_state(&game->state0, e_game_state0_options);
+				add_state_transition(&game->state0, e_game_state0_options, game->render_time, c_transition_time);
 			}
 
 			draw_text(c_game_name, wxy(0.5f, 0.2f), 128, make_color(1), true, &game->font);
@@ -938,7 +938,7 @@ func void render(float interp_dt, float delta)
 				do_button(S("Restart"), c_world_size * v2(0.87f, 0.82f), true)
 				|| is_key_pressed(SDLK_ESCAPE, true) || want_to_reset
 			) {
-				pop_state(&game->state0);
+				pop_state_transition(&game->state0, game->render_time, c_transition_time);
 				game->do_hard_reset = true;
 			}
 
@@ -983,7 +983,7 @@ func void render(float interp_dt, float delta)
 
 			b8 escape = is_key_pressed(SDLK_ESCAPE, true);
 			if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
-				pop_state(&game->state0);
+				pop_state_transition(&game->state0, game->render_time, c_transition_time);
 			}
 
 			{
@@ -1241,7 +1241,7 @@ func void render(float interp_dt, float delta)
 									add_temporary_state(&game->state0, e_game_state0_input_name);
 								}
 								else {
-									add_state(&game->state0, e_game_state0_win_leaderboard);
+									add_state_transition(&game->state0, e_game_state0_win_leaderboard, game->render_time, c_transition_time);
 									game->update_count_at_win_time = hard_data->update_count;
 									#if defined(__EMSCRIPTEN__)
 									submit_leaderboard_score(hard_data->update_count, c_leaderboard_id);
@@ -1343,7 +1343,31 @@ func void render(float interp_dt, float delta)
 			render_flush(data, true);
 
 		} break;
+	}
 
+	s_state_transition transition = get_state_transition(&game->state0, game->render_time);
+	if(transition.active) {
+		{
+			float alpha = 0;
+			if(transition.time_data.percent <= 0.5f) {
+				alpha = transition.time_data.percent * 2;
+			}
+			else {
+				alpha = transition.time_data.inv_percent * 2;
+			}
+			s_instance_data data = zero;
+			data.model = fullscreen_m4();
+			data.color = make_color(0.0f, 0, 0, alpha);
+			add_to_render_group(data, e_shader_flat, e_texture_white, e_mesh_quad);
+		}
+
+		{
+			s_render_flush_data data = make_render_flush_data(cam_pos, player_pos);
+			data.projection = ortho;
+			data.blend_mode = e_blend_mode_normal;
+			data.depth_mode = e_depth_mode_no_read_no_write;
+			render_flush(data, true);
+		}
 	}
 
 	SDL_GL_SwapWindow(g_platform_data->window);
@@ -1840,7 +1864,7 @@ func void do_leaderboard()
 {
 	b8 escape = is_key_pressed(SDLK_ESCAPE, true);
 	if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
-		add_state(&game->state0, e_game_state0_main_menu);
+		add_state_transition(&game->state0, e_game_state0_main_menu, game->render_time, c_transition_time);
 		clear_state(&game->state0);
 	}
 
