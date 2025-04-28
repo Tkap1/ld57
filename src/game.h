@@ -185,12 +185,6 @@ struct s_key_event
 	int key;
 };
 
-struct s_state
-{
-	b8 temporary;
-	int value;
-};
-
 struct s_key_state
 {
 	b8 is_down;
@@ -280,10 +274,7 @@ struct s_game
 
 	int update_count_at_win_time;
 
-	b8 pop_state;
-	b8 clear_state;
-	s_maybe<s_state> next_state;
-	s_list<s_state, 16> state0;
+	s_state state0;
 
 	s_list<s_leaderboard_entry, c_max_leaderboard_entries> leaderboard_arr;
 	b8 leaderboard_received;

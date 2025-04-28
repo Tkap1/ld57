@@ -103,7 +103,7 @@ m_dll_export void init(s_platform_data* platform_data)
 
 	SDL_StartTextInput();
 
-	set_state0_next_frame(e_game_state0_main_menu);
+	add_state(&game->state0, e_game_state0_main_menu);
 
 	u8* cursor = platform_data->memory + sizeof(s_game);
 
@@ -293,24 +293,11 @@ m_dll_export void do_game(s_platform_data* platform_data)
 	}
 
 	// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv		handle state start		vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-	if(game->clear_state) {
-		game->clear_state = false;
-		game->state0.count = 0;
-	}
-	if(game->pop_state) {
-		game->pop_state = false;
-		while(true) {
-			game->state0.pop_last();
-			s_state temp = game->state0.get_last();
-			if(!temp.temporary) { break; }
+	{
+		b8 state_changed = handle_state(&game->state0);
+		if(state_changed) {
+			game->accumulator += c_update_delay;
 		}
-		game->accumulator += c_update_delay;
-	}
-
-	if(game->next_state.valid) {
-		game->state0.add(game->next_state.value);
-		game->next_state.valid = zero;
-		game->accumulator += c_update_delay;
 	}
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^		handle state end		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -455,7 +442,7 @@ func void update()
 
 	game->update_frame_arena.used = 0;
 
-	e_game_state0 state0 = (e_game_state0)game->state0.get_last().value;
+	e_game_state0 state0 = (e_game_state0)get_state(&game->state0);
 	s_hard_game_data* hard_data = &game->hard_data;
 	s_soft_game_data* soft_data = &hard_data->soft_data;
 	s_player* player = &soft_data->player;
@@ -884,7 +871,7 @@ func void render(float interp_dt, float delta)
 	clear_framebuffer_depth(0);
 	clear_framebuffer_color(0, v4(0.0f, 0, 0, 0));
 
-	e_game_state0 state0 = (e_game_state0)game->state0.get_last().value;
+	e_game_state0 state0 = (e_game_state0)get_state(&game->state0);
 
 
 	switch(state0) {
@@ -893,7 +880,7 @@ func void render(float interp_dt, float delta)
 		case e_game_state0_main_menu: {
 
 			if(do_button(S("Play"), wxy(0.5f, 0.5f), true) || is_key_pressed(SDLK_RETURN, true)) {
-				set_state0_next_frame(e_game_state0_play);
+				add_state(&game->state0, e_game_state0_play);
 				game->do_hard_reset = true;
 			}
 
@@ -901,11 +888,11 @@ func void render(float interp_dt, float delta)
 				#if defined(__EMSCRIPTEN__)
 				get_leaderboard(c_leaderboard_id);
 				#endif
-				set_state0_next_frame(e_game_state0_leaderboard);
+				add_state(&game->state0, e_game_state0_leaderboard);
 			}
 
 			if(do_button(S("Options"), wxy(0.5f, 0.7f), true)) {
-				set_state0_next_frame(e_game_state0_options);
+				add_state(&game->state0, e_game_state0_options);
 			}
 
 			draw_text(c_game_name, wxy(0.5f, 0.2f), 128, make_color(1), true, &game->font);
@@ -951,7 +938,7 @@ func void render(float interp_dt, float delta)
 				do_button(S("Restart"), c_world_size * v2(0.87f, 0.82f), true)
 				|| is_key_pressed(SDLK_ESCAPE, true) || want_to_reset
 			) {
-				pop_game_state();
+				pop_state(&game->state0);
 				game->do_hard_reset = true;
 			}
 
@@ -996,7 +983,7 @@ func void render(float interp_dt, float delta)
 
 			b8 escape = is_key_pressed(SDLK_ESCAPE, true);
 			if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
-				pop_game_state();
+				pop_state(&game->state0);
 			}
 
 			{
@@ -1251,10 +1238,10 @@ func void render(float interp_dt, float delta)
 							);
 							if(time_data.percent >= 1) {
 								if(game->leaderboard_nice_name.count <= 0 && c_on_web) {
-									set_temp_state0_next_frame(e_game_state0_input_name);
+									add_temporary_state(&game->state0, e_game_state0_input_name);
 								}
 								else {
-									set_state0_next_frame(e_game_state0_win_leaderboard);
+									add_state(&game->state0, e_game_state0_win_leaderboard);
 									game->update_count_at_win_time = hard_data->update_count;
 									#if defined(__EMSCRIPTEN__)
 									submit_leaderboard_score(hard_data->update_count, c_leaderboard_id);
@@ -1707,26 +1694,6 @@ func void try_to_dash()
 	}
 }
 
-func void set_state0_next_frame(e_game_state0 state)
-{
-	s_state next_state = zero;
-	next_state.value = state;
-	game->next_state = maybe(next_state);
-}
-
-func void set_temp_state0_next_frame(e_game_state0 state)
-{
-	s_state next_state = zero;
-	next_state.value = state;
-	next_state.temporary = true;
-	game->next_state = maybe(next_state);
-}
-
-func void pop_game_state()
-{
-	game->pop_state = true;
-}
-
 func b8 do_button(s_len_str text, s_v2 pos, b8 centered)
 {
 	s_v2 size = v2(256, 48);
@@ -1873,8 +1840,8 @@ func void do_leaderboard()
 {
 	b8 escape = is_key_pressed(SDLK_ESCAPE, true);
 	if(do_button(S("Back"), wxy(0.87f, 0.92f), true) || escape) {
-		set_state0_next_frame(e_game_state0_main_menu);
-		game->clear_state = true;
+		add_state(&game->state0, e_game_state0_main_menu);
+		clear_state(&game->state0);
 	}
 
 	{
