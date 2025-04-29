@@ -1238,7 +1238,7 @@ func void render(float interp_dt, float delta)
 							);
 							if(time_data.percent >= 1) {
 								if(game->leaderboard_nice_name.count <= 0 && c_on_web) {
-									add_temporary_state(&game->state0, e_game_state0_input_name);
+									add_temporary_state_transition(&game->state0, e_game_state0_input_name, game->render_time, c_transition_time);
 								}
 								else {
 									add_state_transition(&game->state0, e_game_state0_win_leaderboard, game->render_time, c_transition_time);

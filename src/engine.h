@@ -218,13 +218,19 @@ struct s_obj_face
 	int uv_index[3];
 };
 
+struct s_obj_vertex
+{
+	s_v3 pos;
+	s_v3 color;
+};
+
 struct s_obj_mesh
 {
 	int vertex_count;
 	int normal_count;
 	int uv_count;
 	int face_count;
-	s_v3 pos_arr[c_max_vertices];
+	s_obj_vertex vertex_arr[c_max_vertices];
 	s_v3 normal_arr[c_max_vertices];
 	s_v2 uv_arr[c_max_vertices];
 	s_obj_face face_arr[c_max_faces];

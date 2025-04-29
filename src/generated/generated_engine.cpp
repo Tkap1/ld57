@@ -22,7 +22,7 @@ func u8* try_really_hard_to_read_file(char* file, s_linear_arena* arena);
 func float update_time_to_render_time(float time, float interp_dt);
 func s_m4 fullscreen_m4();
 func s_time_format update_count_to_time_format(int update_count);
-func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena);
+func s_obj_mesh* parse_obj_mesh(char* path, s_linear_arena* arena);
 func char* skip_whitespace(char* str);
 func s_v2 wxy(float x, float y);
 func s_v2 wcxy(float x, float y);

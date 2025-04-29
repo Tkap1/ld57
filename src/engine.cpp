@@ -178,16 +178,17 @@ func s_mesh make_mesh_from_ply_file(char* file, s_linear_arena* arena)
 
 func s_mesh make_mesh_from_obj_file(char* file, s_linear_arena* arena)
 {
-	s_obj_mesh obj_mesh = parse_obj_mesh(file, arena);
-	int vertex_count = obj_mesh.face_count * 3;
+	s_obj_mesh* obj_mesh = parse_obj_mesh(file, arena);
+	int vertex_count = obj_mesh->face_count * 3;
 	assert(vertex_count < c_max_vertices);
 	s_vertex vertex_arr[c_max_vertices] = zero;
-	for(int i = 0; i < obj_mesh.face_count; i += 1) {
+	for(int i = 0; i < obj_mesh->face_count; i += 1) {
 		for(int j = 0; j < 3; j += 1) {
-			vertex_arr[i * 3 + j].pos = obj_mesh.pos_arr[obj_mesh.face_arr[i].vertex_index[j] - 1];
-			vertex_arr[i * 3 + j].normal = obj_mesh.normal_arr[obj_mesh.face_arr[i].normal_index[j] - 1];
-			vertex_arr[i * 3 + j].uv = obj_mesh.uv_arr[obj_mesh.face_arr[i].uv_index[j] - 1];
-			vertex_arr[i * 3 + j].color = make_color(1);
+			vertex_arr[i * 3 + j].pos = obj_mesh->vertex_arr[obj_mesh->face_arr[i].vertex_index[j] - 1].pos;
+			vertex_arr[i * 3 + j].normal = obj_mesh->normal_arr[obj_mesh->face_arr[i].normal_index[j] - 1];
+			vertex_arr[i * 3 + j].uv = obj_mesh->uv_arr[obj_mesh->face_arr[i].uv_index[j] - 1];
+			vertex_arr[i * 3 + j].color.rgb = obj_mesh->vertex_arr[obj_mesh->face_arr[i].vertex_index[j] - 1].color;
+			vertex_arr[i * 3 + j].color.a = 1;
 		}
 	}
 	s_mesh result = make_mesh_from_vertices(vertex_arr, vertex_count);
@@ -678,25 +679,39 @@ func s_time_format update_count_to_time_format(int update_count)
 	return result;
 }
 
-func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
+func s_obj_mesh* parse_obj_mesh(char* path, s_linear_arena* arena)
 {
-	s_obj_mesh result = zero;
+	s_obj_mesh* result = (s_obj_mesh*)arena_alloc_zero(arena, sizeof(s_obj_mesh));
 	char* data = (char*)read_file(path, arena);
 	assert(data);
 	char* cursor = strstr(data, "\nv ") + 1;
 	while(memcmp(cursor, "v ", 2) == 0) {
 		cursor += 2;
 		char* end = null;
-		result.pos_arr[result.vertex_count].x = strtof(cursor, &end);
+		result->vertex_arr[result->vertex_count].pos.x = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.pos_arr[result.vertex_count].y = strtof(cursor, &end);
+		result->vertex_arr[result->vertex_count].pos.y = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.pos_arr[result.vertex_count].z = strtof(cursor, &end);
+		result->vertex_arr[result->vertex_count].pos.z = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.vertex_count += 1;
+
+		result->vertex_arr[result->vertex_count].color.r = strtof(cursor, &end);
+		if(end > cursor) {
+			cursor = end;
+			result->vertex_arr[result->vertex_count].color.g = strtof(cursor, &end);
+			assert(end > cursor);
+			cursor = end;
+			result->vertex_arr[result->vertex_count].color.b = strtof(cursor, &end);
+			assert(end > cursor);
+			cursor = end;
+		}
+		else {
+			result->vertex_arr[result->vertex_count].color = v3(1, 1, 1);
+		}
+		result->vertex_count += 1;
 
 		while(*cursor == '\n' || *cursor == '\r' || *cursor == ' ') {
 			cursor += 1;
@@ -706,16 +721,16 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
 	while(memcmp(cursor, "vn ", 3) == 0) {
 		cursor += 3;
 		char* end = null;
-		result.normal_arr[result.normal_count].x = strtof(cursor, &end);
+		result->normal_arr[result->normal_count].x = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.normal_arr[result.normal_count].y = strtof(cursor, &end);
+		result->normal_arr[result->normal_count].y = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.normal_arr[result.normal_count].z = strtof(cursor, &end);
+		result->normal_arr[result->normal_count].z = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.normal_count += 1;
+		result->normal_count += 1;
 
 		while(*cursor == '\n' || *cursor == '\r' || *cursor == ' ') {
 			cursor += 1;
@@ -725,13 +740,13 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
 	while(memcmp(cursor, "vt ", 3) == 0) {
 		cursor += 3;
 		char* end = null;
-		result.uv_arr[result.uv_count].x = strtof(cursor, &end);
+		result->uv_arr[result->uv_count].x = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.uv_arr[result.uv_count].y = strtof(cursor, &end);
+		result->uv_arr[result->uv_count].y = strtof(cursor, &end);
 		assert(end > cursor);
 		cursor = end;
-		result.uv_count += 1;
+		result->uv_count += 1;
 
 		while(*cursor == '\n' || *cursor == '\r' || *cursor == ' ') {
 			cursor += 1;
@@ -747,13 +762,13 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
 		char* end = null;
 
 		for(int i = 0; i < 3; i += 1) {
-			result.face_arr[result.face_count].vertex_index[i] = (int)strtol(cursor, &end, 10);
+			result->face_arr[result->face_count].vertex_index[i] = (int)strtol(cursor, &end, 10);
 			assert(end > cursor);
 			cursor = end + 1;
-			result.face_arr[result.face_count].uv_index[i] = (int)strtol(cursor, &end, 10);
+			result->face_arr[result->face_count].uv_index[i] = (int)strtol(cursor, &end, 10);
 			assert(end > cursor);
 			cursor = end + 1;
-			result.face_arr[result.face_count].normal_index[i] = (int)strtol(cursor, &end, 10);
+			result->face_arr[result->face_count].normal_index[i] = (int)strtol(cursor, &end, 10);
 			assert(end > cursor);
 			cursor = end;
 
@@ -761,7 +776,8 @@ func s_obj_mesh parse_obj_mesh(char* path, s_linear_arena* arena)
 				cursor += 1;
 			}
 		}
-		result.face_count += 1;
+		result->face_count += 1;
+		assert(result->face_count < c_max_faces);
 
 	}
 
