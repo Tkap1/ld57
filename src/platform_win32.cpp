@@ -67,6 +67,7 @@ int main()
 
 			dll = LoadLibrary("temp_main.dll");
 			assert(dll);
+			printf("Reloaded DLL\n");
 
 			init = (t_game_func)GetProcAddress(dll, "init");
 			init_after_recompile = (t_game_func)GetProcAddress(dll, "init_after_recompile");

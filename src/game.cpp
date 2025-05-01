@@ -468,7 +468,7 @@ func void update()
 					data.shrink = 0.5f;
 					data.particle_duration = 0.5f;
 					data.particle_duration_rand = 0.5f;
-					data.radius = 1.5f;
+					data.radius = 0.75f;
 					data.radius_rand = 0.25f;
 					{
 						s_particle_color c = zero;
@@ -578,7 +578,7 @@ func void update()
 							a.shrink = 0.5f;
 							a.particle_duration = 0.5f;
 							a.particle_duration_rand = 0.5f;
-							a.radius = 1.5f;
+							a.radius = 0.75f;
 							a.radius_rand = 0.25f;
 							{
 								s_particle_color c = zero;
@@ -669,7 +669,7 @@ func void update()
 								data.shrink = 0.5f;
 								data.particle_duration = 3.5f;
 								data.particle_duration_rand = 0.5f;
-								data.radius = 1.5f;
+								data.radius = 0.75f;
 								data.radius_rand = 0.25f;
 
 								{

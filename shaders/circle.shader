@@ -17,26 +17,14 @@ shared_var vec2 v_uv;
 #if defined(m_vertex)
 void main()
 {
-	mat4 m = projection * view * instance_model;
-	float d = sqrt(m[0][0] * m[0][0] + m[0][1] * m[0][1] + m[0][2] * m[0][2]);
-	m[0][0] = d;
-	m[1][1] = d;
-	m[2][2] = d;
+	vec3 world_pos = (instance_model * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+	vec3 dir_to_cam = normalize(cam_pos - world_pos);
+	vec3 up = normalize(cross(vec3(1.0, 0.0, 0.0), dir_to_cam));
+	vec3 right = cross(up, dir_to_cam);
 
-	m[0][1] = 0.0;
-	m[0][2] = 0.0;
-	m[0][3] = 0.0;
+	vec3 vertex = vertex_pos.y * up + vertex_pos.x * right;
 
-	m[1][0] = 0.0;
-	m[1][2] = 0.0;
-	m[1][3] = 0.0;
-
-	m[2][0] = 0.0;
-	m[2][1] = 0.0;
-	m[2][3] = 0.0;
-
-	vec3 vertex = vertex_pos;
-	gl_Position = m * vec4(vertex, 1.0);
+	gl_Position = projection * view * instance_model * vec4(vertex, 1.0);
 	v_color = vertex_color * instance_color;
 	v_normal = vertex_normal;
 	v_uv = vertex_uv;
@@ -52,13 +40,12 @@ out vec4 out_color;
 void main()
 {
 	vec2 uv = v_uv * 2.0 - 1.0;
-	uv.x *= 16.0 / 9.0;
+	// @Note(tkap, 01/05/2025): This is probably needed for 2D but not 3D
+	// uv.x *= 16.0 / 9.0;
 	vec3 color = vec3(0.0);
 	float d = length(uv);
-	// float d = distance(vec2(0.5), uv);
 	float a = smoothstep(0.5, 0.45, d);
 	color = v_color.rgb * a * v_color.a;
-	// color = vec3(v_uv.x, v_uv.y, 0.0);
 	out_color = vec4(color, 1.0);
 }
 #endif
